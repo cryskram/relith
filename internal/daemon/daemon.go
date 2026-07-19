@@ -6,12 +6,18 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/cryskram/cogniq/internal/config"
 )
 
-type Daemon struct{}
+type Daemon struct {
+	cfg *config.Config
+}
 
-func New() *Daemon {
-	return &Daemon{}
+func New(cfg *config.Config) *Daemon {
+	return &Daemon{
+		cfg: cfg,
+	}
 }
 
 func (d *Daemon) Run(ctx context.Context) error {
