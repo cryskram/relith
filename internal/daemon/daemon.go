@@ -7,16 +7,16 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/cryskram/cogniq/internal/config"
+	"github.com/cryskram/cogniq/internal/app"
 )
 
 type Daemon struct {
-	cfg *config.Config
+	app *app.App
 }
 
-func New(cfg *config.Config) *Daemon {
+func New(app *app.App) *Daemon {
 	return &Daemon{
-		cfg: cfg,
+		app: app,
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	"github.com/cryskram/cogniq/internal/app"
 	"github.com/cryskram/cogniq/internal/config"
 	"github.com/cryskram/cogniq/internal/daemon"
 )
@@ -14,7 +15,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	d := daemon.New(cfg)
+	application := &app.App{
+		Config: cfg,
+	}
+
+	d := daemon.New(application)
 
 	if err := d.Run(context.Background()); err != nil {
 		log.Fatal(err)
