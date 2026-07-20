@@ -1,0 +1,62 @@
+version: 2
+
+project_name: relith
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: relith
+    binary: relith
+    main: ./cmd/relith
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/cryskram/relith/internal/cli.Version={{.Version}}
+
+  - id: relithd
+    binary: relithd
+    main: ./cmd/relithd
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/cryskram/relith/internal/cli.Version={{.Version}}
+
+archives:
+  - id: default
+    builds: [relith, relithd]
+    formats: [tar.gz, zip]
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
