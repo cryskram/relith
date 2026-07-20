@@ -3,7 +3,7 @@ package app
 import (
 	"database/sql"
 
-	"github.com/cryskram/cogniq/internal/config"
+	"github.com/cryskram/relith/internal/config"
 	"github.com/rs/zerolog"
 )
 

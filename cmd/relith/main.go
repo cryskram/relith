@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/cryskram/cogniq/internal/cli"
+	"github.com/cryskram/relith/internal/cli"
 )
 
 func main() {

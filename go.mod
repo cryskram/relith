@@ -1,4 +1,4 @@
-module github.com/cryskram/cogniq
+module github.com/cryskram/relith
 
 go 1.26.4
 

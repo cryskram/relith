@@ -4,10 +4,10 @@ import (
 	"context"
 	"log"
 
-	"github.com/cryskram/cogniq/internal/app"
-	"github.com/cryskram/cogniq/internal/config"
-	"github.com/cryskram/cogniq/internal/daemon"
-	"github.com/cryskram/cogniq/internal/logger"
+	"github.com/cryskram/relith/internal/app"
+	"github.com/cryskram/relith/internal/config"
+	"github.com/cryskram/relith/internal/daemon"
+	"github.com/cryskram/relith/internal/logger"
 )
 
 func main() {

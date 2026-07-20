@@ -1,4 +1,4 @@
-# CogniQ Architecture
+# Relith Architecture
 
 Cognitive Network for Intelligent Queries
 
@@ -70,25 +70,25 @@ Cognitive Network for Intelligent Queries
                       │ HTTP (Unix socket + TCP)
                       │
          ┌────────────┴───────────┐
-         │       CLI (cmd/cogniq)  │
+         │       CLI (cmd/relith)  │
          │       (cobra-based)     │
          └────────────────────────┘
 ```
 
 ### Key Decisions
 
-- **Single binary, dual personality**: The same binary linked as `cogniq` behaves as a CLI client; linked as `cogniqd` (or invoked with a subcommand) runs as a daemon. Docker does this — eliminates version mismatch, simplifies installation, enables atomic upgrades.
+- **Single binary, dual personality**: The same binary linked as `relith` behaves as a CLI client; linked as `relithd` (or invoked with a subcommand) runs as a daemon. Docker does this — eliminates version mismatch, simplifies installation, enables atomic upgrades.
 - **Unix socket for CLI-daemon**: File-system permissions as security boundary, no port conflicts, no network exposure. Windows falls back to localhost TCP with ACL-based access control.
 - **HTTP between CLI and daemon**: Standard, well-understood, trivially debuggable with curl. No need for gRPC on localhost.
 
 ## 2. Folder Structure
 
 ```
-cogniq/
+relith/
 ├── cmd/
-│   ├── cogniq/                    # CLI client entry point
+│   ├── relith/                    # CLI client entry point
 │   │   └── main.go
-│   └── cogniqd/                   # Daemon entry point (tiny)
+│   └── relithd/                   # Daemon entry point (tiny)
 │       └── main.go
 │
 ├── internal/
@@ -216,8 +216,8 @@ cogniq/
 
 | Package            | Responsibility                                                       | Dependencies (internal)                              |
 | ------------------ | -------------------------------------------------------------------- | ---------------------------------------------------- |
-| `cmd/cogniq`       | Parse CLI flags (cobra), build HTTP requests to daemon               | `pkg/types`, `pkg/errors`                            |
-| `cmd/cogniqd`      | Parse flags, load config, instantiate daemon, block on signal        | `internal/daemon`, `internal/config`                 |
+| `cmd/relith`       | Parse CLI flags (cobra), build HTTP requests to daemon               | `pkg/types`, `pkg/errors`                            |
+| `cmd/relithd`      | Parse flags, load config, instantiate daemon, block on signal        | `internal/daemon`, `internal/config`                 |
 | `internal/api`     | HTTP routing, request validation, JSON marshaling, error formatting  | `internal/db`, `internal/search`                     |
 | `internal/mcp`     | JSON-RPC over stdio/TCP, tool/resource registration, dispatch        | `internal/db`, `internal/search`                     |
 | `internal/indexer` | Walk filesystems, extract git history, detect languages, batch-write | `internal/db`, `internal/watcher`, `internal/events` |
@@ -241,7 +241,7 @@ Dependencies flow **inward**. `internal/daemon` depends on everything. `internal
 ### A. Adding and Indexing a Repository
 
 ```
-User: cogniq repo add /path/to/project
+User: relith repo add /path/to/project
 
 CLI ── POST /v1/repos ──▶ Daemon
                               │
@@ -797,7 +797,7 @@ FTS5 supports prefix queries natively. For `"auth"`, search `"auth*"` and return
 
 ### Lock File
 
-- Location: `$COGNIQ_DATA_DIR/cogniq.lock` (default `~/.local/share/cogniq/cogniq.lock`)
+- Location: `$RELITH_DATA_DIR/relith.lock` (default `~/.local/share/relith/relith.lock`)
 - Contains daemon PID
 - On startup: if lock exists, check if PID is alive; if alive → exit with error; if dead → remove stale lock and proceed
 - Linux: `flock` system call (atomic, auto-released on crash)
@@ -849,7 +849,7 @@ The daemon creates a `Registry` and passes it to indexer, search, and API layers
 
 ### Future Plugin Loading (Post-v1.0)
 
-1. Scan `~/.local/share/cogniq/plugins/` directory
+1. Scan `~/.local/share/relith/plugins/` directory
 2. Load WASM modules (sandboxed, memory-safe, cross-platform via `wazero`)
 3. Register loaded plugins with the registry
 4. Call `Execute` at each hook point
@@ -869,16 +869,16 @@ For plugins that need heavy computation or network access that WASM can't provid
 
 ## 14. Configuration Structure
 
-### Config File (`~/.config/cogniq/config.yaml`)
+### Config File (`~/.config/relith/config.yaml`)
 
 ```yaml
-# CogniQ Configuration v1
+# Relith Configuration v1
 
 core:
-  data_dir: ~/.local/share/cogniq # Database, lock file, plugins
+  data_dir: ~/.local/share/relith # Database, lock file, plugins
 
 daemon:
-  socket: ~/.local/share/cogniq/cogniq.sock
+  socket: ~/.local/share/relith/relith.sock
   tcp_host: 127.0.0.1
   tcp_port: 9876
 
@@ -909,13 +909,13 @@ log:
 
 ### Environment Variable Overrides
 
-All values overridable via `COGNIQ_` prefix:
+All values overridable via `RELITH_` prefix:
 
 ```bash
-COGNIQ_LOG_LEVEL=debug
-COGNIQ_DAEMON_TCP_PORT=9876
-COGNIQ_INDEXER_CONCURRENCY=8
-COGNIQ_CORE_DATA_DIR=/custom/path
+RELITH_LOG_LEVEL=debug
+RELITH_DAEMON_TCP_PORT=9876
+RELITH_INDEXER_CONCURRENCY=8
+RELITH_CORE_DATA_DIR=/custom/path
 ```
 
 ### Precedence (lowest → highest)
@@ -950,7 +950,7 @@ const (
     DaemonNotRunning  Code = "DAEMON_NOT_RUNNING"
 )
 
-type CogniQError struct {
+type RelithError struct {
     Code    Code   `json:"code"`
     Message string `json:"message"`
     Err     error  `json:"-"`   // Wrapped error, not serialized
@@ -982,11 +982,11 @@ type CogniQError struct {
 ### CLI Error Presentation
 
 ```
-$ cogniq search --query "auth"
+$ relith search --query "auth"
 Error: Daemon is not running
-Hint: Start the daemon with: cogniqd
+Hint: Start the daemon with: relithd
 
-$ cogniq repo add /nonexistent
+$ relith repo add /nonexistent
 Error: Invalid input: path does not exist: /nonexistent
 ```
 
@@ -1226,7 +1226,7 @@ Links to relevant docs, discussions, issues.
 
 ### v0.1 — MVP (Weeks 1–8)
 
-**Goal**: A developer can install CogniQ, point it at a project, and search its code from any MCP-compatible AI assistant.
+**Goal**: A developer can install Relith, point it at a project, and search its code from any MCP-compatible AI assistant.
 
 | Week | Milestone | Deliverables                                                             |
 | ---- | --------- | ------------------------------------------------------------------------ |
@@ -1236,7 +1236,7 @@ Links to relevant docs, discussions, issues.
 | 7    | API + MCP | REST endpoints (repos, search, files), MCP tools (search_code, get_file) |
 | 8    | Polish    | File watcher, Makefile, docs, basic tests, Linux dev guide               |
 
-**Ships**: `cogniq repo add`, `cogniq search`, MCP integration with Cursor/OpenCode/Claude Code. Daemon runs in foreground (`cogniqd`). Linux only.
+**Ships**: `relith repo add`, `relith search`, MCP integration with Cursor/OpenCode/Claude Code. Daemon runs in foreground (`relithd`). Linux only.
 
 ### v0.2 — Foundation (Weeks 9–16)
 

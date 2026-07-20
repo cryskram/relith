@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/cryskram/cogniq/internal/app"
-	"github.com/cryskram/cogniq/internal/db"
+	"github.com/cryskram/relith/internal/app"
+	"github.com/cryskram/relith/internal/db"
 )
 
 type Daemon struct {
@@ -33,7 +33,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 	defer d.closeDB()
 
-	if err := db.Migrate(d.app.DB); err != nil {
+	if err := db.Migrate(ctx, d.app.DB); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
 
@@ -64,7 +64,7 @@ func (d *Daemon) initDataDir() error {
 }
 
 func (d *Daemon) openDB() error {
-	path := filepath.Join(d.app.Config.Core.DataDir, "cogniq.db")
+	path := filepath.Join(d.app.Config.Core.DataDir, "relith.db")
 	database, err := db.Open(path)
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)

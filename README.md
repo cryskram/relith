@@ -1,10 +1,10 @@
-# CogniQ
+# Relith
 
 > One context. Every AI.
 
-CogniQ (Cognitive Network for Intelligent Queries) is a local-first context engine that indexes your codebases and exposes them through a unified interface for AI assistants.
+Relith is a local-first context engine that indexes your codebases and exposes them through a unified interface for AI assistants.
 
-Instead of every AI tool building its own isolated context, CogniQ acts as a shared intelligence layer that enables assistants to search, understand, and reason over the same knowledge base.
+Instead of every AI tool building its own isolated context, Relith acts as a shared intelligence layer that enables assistants to search, understand, and reason over the same knowledge base.
 
 ## Vision
 
@@ -18,8 +18,6 @@ Instead of every AI tool building its own isolated context, CogniQ acts as a sha
 ## Status
 
 🚧 Early development (v0.1.0)
-
-The architecture has been finalized, and implementation is currently in progress.
 
 ## Documentation
 

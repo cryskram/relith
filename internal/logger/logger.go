@@ -5,26 +5,31 @@ import (
 	"os"
 	"time"
 
-	"github.com/cryskram/cogniq/internal/config"
 	"github.com/rs/zerolog"
+
+	"github.com/cryskram/relith/internal/config"
 )
 
 func New(cfg config.LogConfig) zerolog.Logger {
 	var output io.Writer = os.Stderr
 
-	if cfg.Output != "" && cfg.Output != "stdout" && cfg.Output != "stderr" {
+	if cfg.Output == "stdout" {
+		output = os.Stdout
+	} else if cfg.Output != "" && cfg.Output != "stderr" {
 		f, err := os.OpenFile(cfg.Output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-
-		if err != nil {
+		if err == nil {
 			output = f
 		}
 	}
 
-	if cfg.Output == "stdout" {
-		output = os.Stdout
+	zerolog.TimeFieldFormat = time.RFC3339Nano
+
+	level, err := zerolog.ParseLevel(cfg.Level)
+	if err != nil {
+		level = zerolog.InfoLevel
 	}
 
-	zerolog.TimeFieldFormat = time.RFC3339Nano
+	zerolog.SetGlobalLevel(level)
 
 	if cfg.Format == "json" {
 		return zerolog.New(output).With().Timestamp().Logger()

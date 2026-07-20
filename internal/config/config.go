@@ -1,11 +1,20 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/viper"
+)
+
+var (
+	ErrNoDataDir       = errors.New("data directory not configured")
+	ErrInvalidLogLevel = errors.New("invalid log level (valid: debug, info, warn, error, fatal)")
+	ErrInvalidLogFmt   = errors.New("invalid log format (valid: console, json)")
+	ErrInvalidPort     = errors.New("port must be between 1 and 65535")
 )
 
 type Config struct {
@@ -56,18 +65,16 @@ type LogConfig struct {
 	Output string `mapstructure:"output"`
 }
 
-func Load() (*Config, error) {
-	v := viper.New()
-
+func setDefaults(v *viper.Viper) error {
 	dataDir, err := DefaultDataDir()
 	if err != nil {
-		return nil, fmt.Errorf("default data dir: %w", err)
+		return fmt.Errorf("default data dir: %w", err)
 	}
 	v.SetDefault("core.data_dir", dataDir)
 
 	socketPath, err := DefaultSocketPath()
 	if err != nil {
-		return nil, fmt.Errorf("default socket path: %w", err)
+		return fmt.Errorf("default socket path: %w", err)
 	}
 	v.SetDefault("daemon.socket", socketPath)
 	v.SetDefault("daemon.tcp_host", "127.0.0.1")
@@ -91,15 +98,75 @@ func Load() (*Config, error) {
 	v.SetDefault("log.format", "console")
 	v.SetDefault("log.output", "stderr")
 
-	v.SetEnvPrefix("COGNIQ")
+	return nil
+}
+
+func validate(cfg *Config) error {
+	if cfg.Core.DataDir == "" {
+		return ErrNoDataDir
+	}
+	switch cfg.Log.Level {
+	case "debug", "info", "warn", "error", "fatal":
+	default:
+		return ErrInvalidLogLevel
+	}
+	switch cfg.Log.Format {
+	case "console", "json":
+	default:
+		return ErrInvalidLogFmt
+	}
+	if cfg.Daemon.TCPPort < 1 || cfg.Daemon.TCPPort > 65535 {
+		return fmt.Errorf("daemon tcp_port: %w", ErrInvalidPort)
+	}
+	if cfg.MCP.TCPPort < 1 || cfg.MCP.TCPPort > 65535 {
+		return fmt.Errorf("mcp tcp_port: %w", ErrInvalidPort)
+	}
+	if cfg.Indexer.Concurrency < 1 {
+		cfg.Indexer.Concurrency = 1
+	}
+	if cfg.Search.MaxResults < 1 {
+		cfg.Search.MaxResults = 1
+	}
+	return nil
+}
+
+func Load() (*Config, error) {
+	v := viper.New()
+
+	if err := setDefaults(v); err != nil {
+		return nil, err
+	}
+
+	configDir, err := DefaultConfigDir()
+	if err == nil {
+		v.AddConfigPath(configDir)
+	}
+	v.AddConfigPath(".")
+	v.SetConfigName("relith")
+	v.SetConfigType("yaml")
+
+	_ = v.ReadInConfig()
+
+	v.SetEnvPrefix("RELITH")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
 	var cfg Config
-
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
 	}
 
+	if err := validate(&cfg); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
+}
+
+func ConfigFilePath() (string, error) {
+	configDir, err := DefaultConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(configDir, "relith.yaml"), nil
 }
