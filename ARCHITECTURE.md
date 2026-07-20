@@ -77,7 +77,7 @@ Cognitive Network for Intelligent Queries
 
 ### Key Decisions
 
-- **Single binary, dual personality**: The same binary linked as `relith` behaves as a CLI client; linked as `relithd` (or invoked with a subcommand) runs as a daemon. Docker does this — eliminates version mismatch, simplifies installation, enables atomic upgrades.
+- **Single binary, dual personality**: The same binary linked as `relith` behaves as a CLI client; linked as `relithd` (or invoked with a subcommand) runs as a daemon. Docker does this - eliminates version mismatch, simplifies installation, enables atomic upgrades.
 - **Unix socket for CLI-daemon**: File-system permissions as security boundary, no port conflicts, no network exposure. Windows falls back to localhost TCP with ACL-based access control.
 - **HTTP between CLI and daemon**: Standard, well-understood, trivially debuggable with curl. No need for gRPC on localhost.
 
@@ -208,7 +208,7 @@ relith/
 - **`internal/`**: Go's `internal` package visibility ensures these packages cannot be imported by external consumers. The public API surface is strictly the CLI commands, REST API, and MCP protocol.
 - **`pkg/`**: Only types that must cross the internal boundary. Goal is <200 lines. No external dependencies.
 - **`sql/` separate from `db/`**: The `sql/` directory holds the source of truth (migration SQL, sqlc queries). `internal/db/` holds generated Go code. A DBA can review the actual SQL without wading through Go.
-- **`cmd/`**: Thin — parse flags, create config, launch daemon or dispatch CLI command. Zero business logic.
+- **`cmd/`**: Thin - parse flags, create config, launch daemon or dispatch CLI command. Zero business logic.
 
 ---
 
@@ -499,7 +499,7 @@ Offset pagination is simpler and sufficient for MVP. Data volumes are moderate (
 
 ### Why SSE, not WebSocket?
 
-SSE is simpler for unidirectional server-to-client streaming. Every HTTP library supports it. WebSocket adds complexity (bidirectional, framing, reconnection logic) that we don't need — the daemon pushes events, clients don't send data over the event stream.
+SSE is simpler for unidirectional server-to-client streaming. Every HTTP library supports it. WebSocket adds complexity (bidirectional, framing, reconnection logic) that we don't need - the daemon pushes events, clients don't send data over the event stream.
 
 ## 8. MCP Tools
 
@@ -641,7 +641,7 @@ type Bus struct {
 
 ### Why not full git history on every change?
 
-A large repo like Linux has 1M+ commits. Walking git history takes minutes. The most common use case is "I saved a file" — handle that in milliseconds, not minutes.
+A large repo like Linux has 1M+ commits. Walking git history takes minutes. The most common use case is "I saved a file" - handle that in milliseconds, not minutes.
 
 ---
 
@@ -715,7 +715,7 @@ FTS5 supports prefix queries natively. For `"auth"`, search `"auth*"` and return
 
 ### Why FTS5 instead of Bleve or Meilisearch?
 
-**Zero dependencies.** FTS5 is compiled into SQLite. No separate process, no HTTP calls, no NPM/Java runtime. For indexing thousands (not millions) of files, FTS5 delivers single-digit millisecond queries. Meilisearch is great but requires a separate binary — antithetical to "single binary, lightweight."
+**Zero dependencies.** FTS5 is compiled into SQLite. No separate process, no HTTP calls, no NPM/Java runtime. For indexing thousands (not millions) of files, FTS5 delivers single-digit millisecond queries. Meilisearch is great but requires a separate binary - antithetical to "single binary, lightweight."
 
 **Tradeoff**: FTS5's ranking is less sophisticated. No typo tolerance, no learning-to-rank. Acceptable for MVP. If users demand typo-tolerant search, we can add Levenshtein-based post-filtering or consider Tantivy (via CGo) in a future version.
 
@@ -1224,7 +1224,7 @@ Links to relevant docs, discussions, issues.
 
 ## 19. Version Roadmap
 
-### v0.1 — MVP (Weeks 1–8)
+### v0.1 - MVP (Weeks 1–8)
 
 **Goal**: A developer can install Relith, point it at a project, and search its code from any MCP-compatible AI assistant.
 
@@ -1238,7 +1238,7 @@ Links to relevant docs, discussions, issues.
 
 **Ships**: `relith repo add`, `relith search`, MCP integration with Cursor/OpenCode/Claude Code. Daemon runs in foreground (`relithd`). Linux only.
 
-### v0.2 — Foundation (Weeks 9–16)
+### v0.2 - Foundation (Weeks 9–16)
 
 | Feature                              | Rationale                                  |
 | ------------------------------------ | ------------------------------------------ |
@@ -1251,7 +1251,7 @@ Links to relevant docs, discussions, issues.
 | CI/CD (goreleaser)                   | Automated builds for all platforms         |
 | systemd service file                 | Production daemon management               |
 
-### v0.3 — Ecosystem (Weeks 17–24)
+### v0.3 - Ecosystem (Weeks 17–24)
 
 | Feature                                | Rationale                           |
 | -------------------------------------- | ----------------------------------- |
@@ -1262,7 +1262,7 @@ Links to relevant docs, discussions, issues.
 | Benchmark suite                        | Prevent regressions                 |
 | VS Code extension (basic)              | Broader IDE support                 |
 
-### v1.0 — Production (Weeks 25–36)
+### v1.0 - Production (Weeks 25–36)
 
 | Feature                 | Rationale                            |
 | ----------------------- | ------------------------------------ |
@@ -1274,7 +1274,7 @@ Links to relevant docs, discussions, issues.
 | Documentation site      | API docs, MCP integration guide      |
 | Migration system        | Schema versioning, seamless upgrades |
 
-### Post-v1.0 (Future — Not Planned)
+### Post-v1.0 (Future - Not Planned)
 
 - Vector embeddings / semantic search
 - Cloud sync (opt-in, E2E encrypted)
@@ -1317,7 +1317,7 @@ Links to relevant docs, discussions, issues.
 2. **Codebases < 1GB**: Typical project sizes. Google/Facebook-scale monorepos are not the target
 3. **Git as primary VCS**: Generic file tracking works, but git-specific features assume git. Other VCS is future work
 4. **MCP becomes the standard**: If a different protocol wins, only `internal/mcp/` needs replacement
-5. **Developers are the users**: Code search, git history, file metadata — all developer concerns
+5. **Developers are the users**: Code search, git history, file metadata - all developer concerns
 
 ### Worst-Case Scenarios
 
@@ -1354,4 +1354,4 @@ github.com/go-chi/chi/v5       # HTTP router (lightweight, stdlib-compatible)
 
 - `chi` is idiomatic, lightweight, and compatible with `net/http`. No framework lock-in.
 - `gorilla/mux` is effectively abandoned (archived).
-- `gin` uses a custom context that diverges from `net/http` — harder to test, harder to integrate with stdlib middleware.
+- `gin` uses a custom context that diverges from `net/http` - harder to test, harder to integrate with stdlib middleware.

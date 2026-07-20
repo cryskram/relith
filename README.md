@@ -15,7 +15,10 @@ Download the latest binary from [releases](https://github.com/cryskram/relith/re
 git clone https://github.com/cryskram/relith.git
 cd relith
 make build-all
-# Binaries in bin/relith (CLI) and bin/relithd (daemon)
+# Binaries in bin/
+#   relith    - CLI client
+#   relithd   - Daemon server
+#   relithmcp - MCP server for AI assistants
 ```
 
 ## Quick Start
@@ -48,11 +51,11 @@ make build-all
 | `relith status` | Show indexing status with file/chunk counts |
 | `relith version` | Print version |
 
-**`relith repo add <path>`** — Validates the path, detects git remote origin URL, and creates a database entry.
+**`relith repo add <path>`** - Validates the path, detects git remote origin URL, and creates a database entry.
 
-**`relith index [path]`** — Walks the repository directory, computes SHA-256 hashes for change detection, detects programming languages, chunks files into overlapping segments (50 lines, 10 overlap), and writes to SQLite FTS5. On subsequent runs, only changed files are re-indexed.
+**`relith index [path]`** - Walks the repository directory, computes SHA-256 hashes for change detection, detects programming languages, chunks files into overlapping segments (50 lines, 10 overlap), and writes to SQLite FTS5. On subsequent runs, only changed files are re-indexed.
 
-**`relith search <query>`** — Full-text search using SQLite FTS5 with BM25 ranking. Supports simple terms, quoted phrases, prefix (`term*`), and boolean operators (`AND`, `OR`, `NOT`). Results with path matches rank higher when path boosting is enabled.
+**`relith search <query>`** - Full-text search using SQLite FTS5 with BM25 ranking. Supports simple terms, quoted phrases, prefix (`term*`), and boolean operators (`AND`, `OR`, `NOT`). Results with path matches rank higher when path boosting is enabled.
 
 ## Daemon
 
@@ -101,6 +104,59 @@ curl -s -X POST http://127.0.0.1:9876/v1/repos/1/index
 curl -s "http://127.0.0.1:9876/v1/search?q=sqlite"
 ```
 
+## MCP Server
+
+Relith exposes an [MCP](https://modelcontextprotocol.io) (Model Context Protocol) server that AI assistants (Cursor, Claude Code, OpenCode) connect to directly.
+
+```bash
+# Build all binaries (includes relithmcp)
+make build-all
+
+# Run standalone (stdio mode - spawned by AI assistant as subprocess)
+./bin/relithmcp
+```
+
+### Tools
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `search_code` | Full-text search across indexed code | `query` (req), `repo_name`, `language`, `max_results` |
+| `get_file_content` | Retrieve file content by repo + path | `repo_name` (req), `path` (req) |
+| `list_repositories` | List all tracked repos | - |
+| `get_repo_summary` | Language breakdown, file/chunk counts | `repo_name` (req) |
+
+### AI Assistant Configuration
+
+**Claude Code** - add to `~/.config/claude/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "relith": {
+      "command": "/path/to/relithmcp"
+    }
+  }
+}
+```
+
+**Cursor** - add in Settings → MCP Servers → Add new:
+
+```
+Name: relith
+Type: command
+Command: /path/to/relithmcp
+```
+
+### Manual Test
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+echo '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+echo '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_repositories","arguments":{}}}'
+) | ./bin/relithmcp 2>/dev/null
+```
+
 ## Configuration
 
 Config file: `~/.config/relith/relith.yaml` (Linux) or `%LOCALAPPDATA%/Relith/relith.yaml` (Windows). Environment variables with `RELITH_` prefix override file values.
@@ -133,16 +189,17 @@ WHERE d.path LIKE '%.go';
 
 ## Architecture
 
-Two binaries:
-- **`relith`** — CLI client (opens DB directly for simple operations)
-- **`relithd`** — Daemon server (Unix socket + TCP HTTP API)
+Three binaries:
+- **`relith`** - CLI client (opens DB directly for simple operations)
+- **`relithd`** - Daemon server (Unix socket + TCP HTTP API)
+- **`relithmcp`** - MCP protocol server (stdio JSON-RPC for AI assistants)
 
 Components:
-- `internal/api` — REST API with health, repo CRUD, indexing trigger, search
-- `internal/indexer` — File walker, language detection, chunking, hash-based change detection
-- `internal/search` — FTS5 query builder, BM25 ranking, path boosting
-- `internal/watcher` — fsnotify-based file watcher with debounced re-indexing
-- `internal/db` — SQLite with WAL mode, FTS5, goose migrations, sqlc-generated queries
+- `internal/api` - REST API with health, repo CRUD, indexing trigger, search
+- `internal/indexer` - File walker, language detection, chunking, hash-based change detection
+- `internal/search` - FTS5 query builder, BM25 ranking, path boosting
+- `internal/watcher` - fsnotify-based file watcher with debounced re-indexing
+- `internal/db` - SQLite with WAL mode, FTS5, goose migrations, sqlc-generated queries
 
 Storage: SQLite with FTS5 full-text search, WAL mode, porter unicode61 tokenizer.
 
