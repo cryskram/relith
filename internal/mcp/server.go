@@ -306,6 +306,16 @@ func (s *Server) writeJSON(id json.RawMessage, resp JSONRPCResponse) {
 	}
 }
 
+const noReposHelp = "No repositories tracked. Add one with:\n  relith repo add <path>\n  relith index"
+
+func (s *Server) hasRepos(ctx context.Context) (bool, error) {
+	repos, err := s.queries.ListRepos(ctx)
+	if err != nil {
+		return false, err
+	}
+	return len(repos) > 0, nil
+}
+
 func (s *Server) textContent(text string) CallToolResult {
 	return CallToolResult{
 		Content: []ToolContent{{Type: "text", Text: text}},

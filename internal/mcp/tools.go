@@ -16,6 +16,14 @@ func (s *Server) handleSearchCode(ctx context.Context, params map[string]any) Ca
 		return s.errorContent("query is required")
 	}
 
+	ok, err := s.hasRepos(ctx)
+	if err != nil {
+		return s.errorContent("check repos: " + err.Error())
+	}
+	if !ok {
+		return s.textContent("No results found. " + noReposHelp)
+	}
+
 	repoName := strParam(params, "repo_name")
 	language := strParam(params, "language")
 	maxResults := intParam(params, "max_results", 20)
@@ -78,6 +86,14 @@ func (s *Server) handleGetFileContent(ctx context.Context, params map[string]any
 
 	if repoName == "" || filePath == "" {
 		return s.errorContent("repo_name and path are required")
+	}
+
+	ok, err := s.hasRepos(ctx)
+	if err != nil {
+		return s.errorContent("check repos: " + err.Error())
+	}
+	if !ok {
+		return s.errorContent("repository not found: " + repoName + ". " + noReposHelp)
 	}
 
 	repos, err := s.queries.ListRepos(ctx)
@@ -156,6 +172,14 @@ func (s *Server) handleGetRepoSummary(ctx context.Context, params map[string]any
 	repoName := strParam(params, "repo_name")
 	if repoName == "" {
 		return s.errorContent("repo_name is required")
+	}
+
+	ok, err := s.hasRepos(ctx)
+	if err != nil {
+		return s.errorContent("check repos: " + err.Error())
+	}
+	if !ok {
+		return s.errorContent("repository not found: " + repoName + ". " + noReposHelp)
 	}
 
 	repos, err := s.queries.ListRepos(ctx)

@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="images/logo.png">
-    <img src="images/logo.png" alt="Relith" width="400">
+    <img src="images/logo.png" alt="Relith" width="200">
   </picture>
 </p>
 
@@ -67,6 +67,16 @@ Relith exposes an **MCP server** that AI assistants connect to directly. Support
 | `get_file_content` | Retrieve file content by repo + path | `repo_name` (req), `path` (req) |
 | `list_repositories` | List all tracked repos | - |
 | `get_repo_summary` | Language breakdown, file/chunk counts | `repo_name` (req) |
+
+### Prerequisites
+
+The MCP server needs an indexed database to serve queries. Before connecting,
+index at least one repository:
+
+```bash
+relith repo add /path/to/your/project
+relith index
+```
 
 ### Setup
 

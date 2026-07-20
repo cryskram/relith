@@ -3,12 +3,21 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	_ "modernc.org/sqlite"
 )
 
 func Open(path string) (*sql.DB, error) {
+	if path != ":memory:" {
+		dir := filepath.Dir(path)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("create db dir: %w", err)
+		}
+	}
+
 	database, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("sql open: %w", err)

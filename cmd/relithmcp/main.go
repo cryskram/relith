@@ -21,6 +21,10 @@ func main() {
 
 	log := logger.New(cfg.Log)
 
+	if err := os.MkdirAll(cfg.Core.DataDir, 0755); err != nil {
+		log.Fatal().Err(err).Str("dir", cfg.Core.DataDir).Msg("create data directory")
+	}
+
 	dbPath := filepath.Join(cfg.Core.DataDir, "relith.db")
 	database, err := db.Open(dbPath)
 	if err != nil {
