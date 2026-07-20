@@ -6,17 +6,35 @@ Relith is a local-first context engine that indexes your codebases and exposes t
 
 Instead of every AI tool building its own isolated context, Relith acts as a shared intelligence layer that enables assistants to search, understand, and reason over the same knowledge base.
 
+## Install
+
+Download the latest binary from [releases](https://github.com/cryskram/relith/releases), or build from source:
+
+```bash
+# Build from source
+git clone https://github.com/cryskram/relith.git
+cd relith
+make build-all
+# Binaries in bin/relith (CLI) and bin/relithd (daemon)
+```
+
 ## Quick Start
 
 ```bash
+# Build the binaries
+make build-all
+
 # Add a repository
-relith repo add /path/to/your/project
+./bin/relith repo add /path/to/your/project
 
 # Index it
-relith index
+./bin/relith index
+
+# Search
+./bin/relith search "your query"
 
 # Check status
-relith status
+./bin/relith status
 ```
 
 ## Commands
