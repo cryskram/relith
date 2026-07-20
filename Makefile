@@ -1,4 +1,4 @@
-.PHONY: build run test fmt lint clean
+.PHONY: build run test fmt lint clean sqlc
 
 build:
 	go build ./...
@@ -11,6 +11,9 @@ test:
 
 fmt:
 	go fmt ./...
+
+sqlc:
+	sqlc generate
 
 clean:
 	go clean
