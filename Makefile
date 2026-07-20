@@ -1,4 +1,4 @@
-VERSION ?= $(shell git describe --tags --always --dirty || echo v0.3.2-dev)
+VERSION ?= $(shell git describe --tags --always --dirty || echo v0.3.3-dev)
 LDFLAGS := -ldflags "-X github.com/cryskram/relith/internal/cli.Version=$(VERSION)"
 
 .PHONY: build build-all run test fmt lint vet tidy clean sqlc release
