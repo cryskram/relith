@@ -14,14 +14,18 @@ type Querier interface {
 	CountRepoDocuments(ctx context.Context, repoID int64) (int64, error)
 	CreateChunk(ctx context.Context, arg CreateChunkParams) (Chunk, error)
 	CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error)
+	CreateRef(ctx context.Context, arg CreateRefParams) (Ref, error)
 	CreateRepo(ctx context.Context, arg CreateRepoParams) (Repository, error)
 	CreateSymbol(ctx context.Context, arg CreateSymbolParams) (Symbol, error)
 	DeleteChunksByDoc(ctx context.Context, docID int64) error
 	DeleteDocument(ctx context.Context, id int64) error
 	DeleteDocumentsByRepo(ctx context.Context, repoID int64) error
+	DeleteRefsByDoc(ctx context.Context, docID int64) error
 	DeleteRepo(ctx context.Context, id int64) error
 	DeleteSymbolsByDoc(ctx context.Context, docID int64) error
 	DocumentExists(ctx context.Context, arg DocumentExistsParams) (int64, error)
+	FindRefsByName(ctx context.Context, dollar_1 sql.NullString) ([]FindRefsByNameRow, error)
+	FindRefsByNameAndRepo(ctx context.Context, arg FindRefsByNameAndRepoParams) ([]FindRefsByNameAndRepoRow, error)
 	FindSymbolsByName(ctx context.Context, dollar_1 sql.NullString) ([]FindSymbolsByNameRow, error)
 	FindSymbolsByNameAndKind(ctx context.Context, arg FindSymbolsByNameAndKindParams) ([]FindSymbolsByNameAndKindRow, error)
 	FindSymbolsByRepo(ctx context.Context, arg FindSymbolsByRepoParams) ([]FindSymbolsByRepoRow, error)

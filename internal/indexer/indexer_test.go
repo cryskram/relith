@@ -215,6 +215,57 @@ func TestWalkRepo_MaxSize(t *testing.T) {
 	}
 }
 
+func TestExtractReferences(t *testing.T) {
+	code := `func hello() {
+	fmt.Println("hello")
+	process(data)
+}
+
+func main() {
+	hello()
+	greet("world")
+}`
+	refs := ExtractReferences(code)
+	names := make([]string, len(refs))
+	for i, r := range refs {
+		names[i] = r.Name
+	}
+
+	if !containsStr(names, "process") {
+		t.Errorf("expected process, got %v", names)
+	}
+	if !containsStr(names, "hello") {
+		t.Errorf("expected hello, got %v", names)
+	}
+	if !containsStr(names, "greet") {
+		t.Errorf("expected greet, got %v", names)
+	}
+
+	// Control keywords should not appear
+	if containsStr(names, "if") {
+		t.Errorf("'if' should not be in refs: %v", names)
+	}
+	if containsStr(names, "for") {
+		t.Errorf("'for' should not be in refs: %v", names)
+	}
+
+	// Each ref should have context
+	for _, r := range refs {
+		if r.Context == "" {
+			t.Errorf("ref %s should have context", r.Name)
+		}
+	}
+}
+
+func containsStr(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
 func TestIsGitRepo(t *testing.T) {
 	dir := t.TempDir()
 	if IsGitRepo(dir) {

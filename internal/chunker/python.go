@@ -9,6 +9,7 @@ import (
 var (
 	pyFuncPat  = regexp.MustCompile(`^(async\s+)?def\s+([A-Za-z_]\w*)`)
 	pyClassPat = regexp.MustCompile(`^class\s+([A-Za-z_]\w*)`)
+	pyLambdaRe = regexp.MustCompile(`lambda\s+[\w,\s]*:`)
 )
 
 func PythonChunker(content string) []Chunk {
@@ -20,6 +21,7 @@ func PythonChunker(content string) []Chunk {
 	var decls []declInfo
 	inDecl := -1
 	declIndent := -1
+	decoratorStart := -1
 
 	for i := 0; i < len(lines); i++ {
 		raw := lines[i]
@@ -29,6 +31,20 @@ func PythonChunker(content string) []Chunk {
 		}
 
 		indent := countIndent(raw)
+
+		// Track decorators
+		if strings.HasPrefix(trimmed, "@") {
+			if decoratorStart < 0 {
+				decoratorStart = i
+			}
+			continue
+		}
+
+		// Skip lambda expressions (they're not declarations)
+		if pyLambdaRe.MatchString(trimmed) {
+			continue
+		}
+
 		var name, kind string
 		isDecl := false
 
@@ -44,6 +60,12 @@ func PythonChunker(content string) []Chunk {
 			if inDecl >= 0 {
 				decls[len(decls)-1].endLine = i
 			}
+
+			declLine := i
+			if decoratorStart >= 0 {
+				declLine = decoratorStart
+			}
+
 			inDecl = i
 			declIndent = indent
 			col := strings.Index(raw, name)
@@ -51,12 +73,15 @@ func PythonChunker(content string) []Chunk {
 				col = strings.Index(trimmed, name)
 			}
 			decls = append(decls, declInfo{
-				line:    i,
+				line:    declLine,
 				endLine: -1,
 				symbols: []Symbol{{Name: name, Kind: kind, Line: i, Col: col}},
 			})
+			decoratorStart = -1
 			continue
 		}
+
+		decoratorStart = -1
 
 		// Check if we're inside a declaration and indentation returned to base level
 		if inDecl >= 0 && indent <= declIndent && trimmed != "" {

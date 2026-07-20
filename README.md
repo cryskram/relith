@@ -68,6 +68,7 @@ Relith exposes an **MCP server** that AI assistants connect to directly. Support
 | `list_repositories` | List all tracked repos | - |
 | `get_repo_summary` | Language breakdown, file/chunk counts | `repo_name` (req) |
 | `find_symbol` | Search symbols by name prefix (functions, classes, structs, etc.) | `name` (req), `kind`, `repo_name` |
+| `find_references` | Find all call sites for a symbol across all repos | `name` (req), `repo_name` |
 
 ### Prerequisites
 

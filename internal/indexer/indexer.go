@@ -288,6 +288,9 @@ func (idx *Indexer) writeFile(
 		if err := qtx.DeleteSymbolsByDoc(ctx, existing.ID); err != nil {
 			return 0, fmt.Errorf("delete symbols: %w", err)
 		}
+		if err := qtx.DeleteRefsByDoc(ctx, existing.ID); err != nil {
+			return 0, fmt.Errorf("delete refs: %w", err)
+		}
 		docID = existing.ID
 	} else {
 		doc, err := qtx.CreateDocument(ctx, db.CreateDocumentParams{
@@ -323,6 +326,19 @@ func (idx *Indexer) writeFile(
 			}); err != nil {
 				return 0, fmt.Errorf("create symbol: %w", err)
 			}
+		}
+	}
+
+	refs := ExtractReferences(content)
+	for _, r := range refs {
+		if _, err := qtx.CreateRef(ctx, db.CreateRefParams{
+			DocID:   docID,
+			Name:    r.Name,
+			Line:    int64(r.Line),
+			Col:     int64(r.Col),
+			Context: r.Context,
+		}); err != nil {
+			return 0, fmt.Errorf("create ref: %w", err)
 		}
 	}
 

@@ -7,9 +7,9 @@ import (
 
 var (
 	goFuncPat   = regexp.MustCompile(`^func\s+(\([^)]*\)\s+)?([A-Za-z_]\w*)`)
-	goTypePat   = regexp.MustCompile(`^type\s+([A-Za-z_]\w*)`)
-	goStructPat = regexp.MustCompile(`^type\s+([A-Za-z_]\w*)\s+struct(\s*\{)?$`)
-	goIfacePat  = regexp.MustCompile(`^type\s+([A-Za-z_]\w*)\s+interface(\s*\{)?$`)
+	goTypePat   = regexp.MustCompile(`^type\s+([A-Za-z_]\w*)(\[[^]]*\])?\s+`)
+	goStructPat = regexp.MustCompile(`^type\s+([A-Za-z_]\w*)(\[[^]]*\])?\s+struct(\s*\{|\s*//|$)`)
+	goIfacePat  = regexp.MustCompile(`^type\s+([A-Za-z_]\w*)(\[[^]]*\])?\s+interface(\s*\{|\s*//|$)`)
 )
 
 func GoChunker(content string) []Chunk {
@@ -21,11 +21,61 @@ func GoChunker(content string) []Chunk {
 	var decls []declInfo
 	braceDepth := 0
 	inDecl := -1
+	inString := false
+	inLineComment := false
+	stringChar := byte(0)
+
+	updateBraces := func(line string, i int) {
+		if inString || inLineComment {
+			return
+		}
+		bb := 0
+		for j := 0; j < len(line); j++ {
+			ch := line[j]
+			if ch == '"' || ch == '`' || ch == '\'' {
+				if !inString {
+					inString = true
+					stringChar = ch
+				} else if ch == stringChar {
+					inString = false
+				}
+				continue
+			}
+			if ch == '/' && j+1 < len(line) && line[j+1] == '/' {
+				inLineComment = true
+				break
+			}
+			if inString {
+				continue
+			}
+			if ch == '{' {
+				bb++
+			} else if ch == '}' {
+				bb--
+			}
+		}
+		braceDepth += bb
+		if braceDepth < 0 {
+			braceDepth = 0
+		}
+		inLineComment = false
+	}
 
 	for i := 0; i < len(lines); i++ {
-		trimmed := strings.TrimSpace(lines[i])
-		if trimmed == "" || skipLine(trimmed) {
-			updateBrace(&braceDepth, lines[i])
+		rawLine := lines[i]
+		trimmed := strings.TrimSpace(rawLine)
+		if trimmed == "" {
+			updateBraces(rawLine, i)
+			if inDecl >= 0 && braceDepth == 0 {
+				decls[len(decls)-1].endLine = i + 1
+				inDecl = -1
+			}
+			continue
+		}
+
+		// Skip comment-only, package, import lines
+		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "package ") || strings.HasPrefix(trimmed, "import") {
+			updateBraces(rawLine, i)
 			if inDecl >= 0 && braceDepth == 0 {
 				decls[len(decls)-1].endLine = i + 1
 				inDecl = -1
@@ -43,14 +93,14 @@ func GoChunker(content string) []Chunk {
 			if strings.HasPrefix(trimmed, "func (") {
 				kind = "method"
 			}
-			col = strings.Index(lines[i], name)
+			col = strings.Index(rawLine, name)
 			if col < 0 {
 				col = strings.Index(trimmed, name)
 			}
 			isDecl = true
 		} else if m := goTypePat.FindStringSubmatch(trimmed); m != nil {
 			name = m[1]
-			col = strings.Index(lines[i], name)
+			col = strings.Index(rawLine, name)
 			if col < 0 {
 				col = strings.Index(trimmed, name)
 			}
@@ -61,20 +111,34 @@ func GoChunker(content string) []Chunk {
 			} else {
 				kind = "type"
 			}
+			// Check if the type has a brace body
+			if !strings.Contains(trimmed, "{") {
+				// Must check if next line continues with brace
+				hasBrace := false
+				if i+1 < len(lines) && strings.Contains(lines[i+1], "{") {
+					hasBrace = true
+				}
+				if !hasBrace {
+					kind = "type"
+				}
+			}
 			isDecl = true
 		}
 
 		if isDecl {
-			// Close previous open declaration
 			if inDecl >= 0 {
 				decls[len(decls)-1].endLine = i
 			}
 
-			bb := countBraces(lines[i])
+			hasBrace := strings.Contains(rawLine, "{")
 
-			if bb > 0 {
-				// Has opening brace(s) on same line — track scope
-				braceDepth = bb - 1 // count the opening brace
+			if hasBrace {
+				cBraces := strings.Count(rawLine, "{") - strings.Count(rawLine, "}")
+				if cBraces > 0 {
+					braceDepth = cBraces - 1
+				} else {
+					braceDepth = 0
+				}
 				inDecl = i
 				decls = append(decls, declInfo{
 					line:    i,
@@ -86,26 +150,35 @@ func GoChunker(content string) []Chunk {
 					inDecl = -1
 				}
 			} else {
-				// No brace — single line or simple type alias
-				braceDepth = 0
-				inDecl = -1
-				decls = append(decls, declInfo{
-					line:    i,
-					endLine: i + 1,
-					symbols: []Symbol{{Name: name, Kind: kind, Line: i, Col: col}},
-				})
+				// Check if next line starts with { (type Foo struct\n{)
+				if i+1 < len(lines) && strings.TrimSpace(lines[i+1]) == "{" {
+					inDecl = i
+					braceDepth = 0
+					decls = append(decls, declInfo{
+						line:    i,
+						endLine: -1,
+						symbols: []Symbol{{Name: name, Kind: kind, Line: i, Col: col}},
+					})
+				} else {
+					braceDepth = 0
+					inDecl = -1
+					decls = append(decls, declInfo{
+						line:    i,
+						endLine: i + 1,
+						symbols: []Symbol{{Name: name, Kind: kind, Line: i, Col: col}},
+					})
+				}
 			}
 			continue
 		}
 
-		updateBrace(&braceDepth, lines[i])
+		updateBraces(rawLine, i)
 		if inDecl >= 0 && braceDepth == 0 {
 			decls[len(decls)-1].endLine = i + 1
 			inDecl = -1
 		}
 	}
 
-	// Close any remaining open declaration
 	if inDecl >= 0 && len(decls) > 0 {
 		decls[len(decls)-1].endLine = len(lines)
 	}
@@ -115,22 +188,4 @@ func GoChunker(content string) []Chunk {
 		return lineBasedChunk(content, 50, 10)
 	}
 	return chunks
-}
-
-func countBraces(s string) int {
-	return strings.Count(s, "{") - strings.Count(s, "}")
-}
-
-func updateBrace(depth *int, line string) {
-	*depth += countBraces(line)
-	if *depth < 0 {
-		*depth = 0
-	}
-}
-
-func skipLine(trimmed string) bool {
-	if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "package ") || strings.HasPrefix(trimmed, "import") {
-		return true
-	}
-	return false
 }

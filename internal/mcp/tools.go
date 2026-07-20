@@ -81,6 +81,79 @@ func (s *Server) handleSearchCode(ctx context.Context, params map[string]any) Ca
 	return s.textContent(sb.String())
 }
 
+func (s *Server) handleFindReferences(ctx context.Context, params map[string]any) CallToolResult {
+	name := strParam(params, "name")
+	if name == "" {
+		return s.errorContent("name is required")
+	}
+
+	repoName := strParam(params, "repo_name")
+
+	ok, err := s.hasRepos(ctx)
+	if err != nil {
+		return s.errorContent("check repos: " + err.Error())
+	}
+	if !ok {
+		return s.textContent("No references found. " + noReposHelp)
+	}
+
+	type refRow struct {
+		Name     string `json:"name"`
+		Path     string `json:"path"`
+		RepoName string `json:"repo_name"`
+		Line     int64  `json:"line"`
+		Col      int64  `json:"col"`
+		Context  string `json:"context"`
+	}
+
+	var rows []refRow
+
+	if repoName != "" {
+		data, qErr := s.queries.FindRefsByNameAndRepo(ctx, db.FindRefsByNameAndRepoParams{
+			Name:    repoName,
+			Column2: sql.NullString{String: name, Valid: true},
+		})
+		if qErr != nil {
+			return s.errorContent(fmt.Sprintf("search refs failed: %v", qErr))
+		}
+		for _, r := range data {
+			rows = append(rows, refRow{
+				Name: r.Name, Path: r.Path,
+				RepoName: r.RepoName, Line: r.Line,
+				Col: r.Col, Context: r.Context,
+			})
+		}
+	} else {
+		data, qErr := s.queries.FindRefsByName(ctx, sql.NullString{String: name, Valid: true})
+		if qErr != nil {
+			return s.errorContent(fmt.Sprintf("search refs failed: %v", qErr))
+		}
+		for _, r := range data {
+			rows = append(rows, refRow{
+				Name: r.Name, Path: r.Path,
+				RepoName: r.RepoName, Line: r.Line,
+				Col: r.Col, Context: r.Context,
+			})
+		}
+	}
+
+	if len(rows) == 0 {
+		return s.textContent("No references found matching: " + name)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Found %d reference(s) to %q:\n\n", len(rows), name))
+	for i, r := range rows {
+		sb.WriteString(fmt.Sprintf("--- %d ---\n", i+1))
+		sb.WriteString(fmt.Sprintf("Context: %s\n", r.Context))
+		sb.WriteString(fmt.Sprintf("File:   %s\n", r.Path))
+		sb.WriteString(fmt.Sprintf("Repo:   %s\n", r.RepoName))
+		sb.WriteString(fmt.Sprintf("Line:   %d : %d\n\n", r.Line, r.Col))
+	}
+
+	return s.textContent(sb.String())
+}
+
 func (s *Server) handleGetFileContent(ctx context.Context, params map[string]any) CallToolResult {
 	repoName := strParam(params, "repo_name")
 	filePath := strParam(params, "path")

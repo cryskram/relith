@@ -39,6 +39,15 @@ type Metadata struct {
 	Value string `json:"value"`
 }
 
+type Ref struct {
+	ID      int64  `json:"id"`
+	DocID   int64  `json:"doc_id"`
+	Name    string `json:"name"`
+	Line    int64  `json:"line"`
+	Col     int64  `json:"col"`
+	Context string `json:"context"`
+}
+
 type Repository struct {
 	ID            int64          `json:"id"`
 	Path          string         `json:"path"`
