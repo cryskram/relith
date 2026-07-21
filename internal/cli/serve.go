@@ -17,13 +17,15 @@ var serveCmd = &cobra.Command{
 	Long: `Starts the Relith daemon which serves the REST API, dashboard web UI,
 and file watcher for automatic re-indexing.
 
-Opens a TCP port (default 9876) or Unix socket for API access.
+Listens on TCP (127.0.0.1:9876 by default). Set daemon.socket
+in config or RELITH_DAEMON_SOCKET to use a Unix socket instead.
+
 The dashboard is available at http://localhost:9876/ in a browser.
 
 Examples:
   relith serve
   RELITH_DAEMON_TCP_PORT=9877 relith serve
-  RELITH_DAEMON_SOCKET="" relith serve -- use TCP explicitly`,
+  RELITH_DAEMON_SOCKET=/tmp/relith.sock relith serve`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {

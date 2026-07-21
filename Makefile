@@ -1,4 +1,4 @@
-VERSION ?= $(shell git describe --tags --always --dirty || echo v0.3.5-dev)
+VERSION ?= $(shell git describe --tags --always --dirty || echo v0.3.6-dev)
 LDFLAGS := -ldflags "-X github.com/cryskram/relith/internal/cli.Version=$(VERSION)"
 
 .PHONY: build build-all run test fmt lint vet tidy clean sqlc release
@@ -14,7 +14,7 @@ build-all:
 
 release-all: clean
 	@mkdir -p bin
-	@for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do \
+	@for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do \
 		GOOS=$$(echo $$platform | cut -d/ -f1); \
 		GOARCH=$$(echo $$platform | cut -d/ -f2); \
 		ext=; [ $$GOOS = windows ] && ext=.exe; \

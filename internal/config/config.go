@@ -72,11 +72,7 @@ func setDefaults(v *viper.Viper) error {
 	}
 	v.SetDefault("core.data_dir", dataDir)
 
-	socketPath, err := DefaultSocketPath()
-	if err != nil {
-		return fmt.Errorf("default socket path: %w", err)
-	}
-	v.SetDefault("daemon.socket", socketPath)
+	v.SetDefault("daemon.socket", "")
 	v.SetDefault("daemon.tcp_host", "127.0.0.1")
 	v.SetDefault("daemon.tcp_port", 9876)
 
