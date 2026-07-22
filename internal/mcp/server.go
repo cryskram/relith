@@ -79,6 +79,9 @@ func (s *Server) registerTools() {
 	s.tools["find_callers"] = s.handleFindCallers
 	s.tools["get_related_files"] = s.handleGetRelatedFiles
 	s.tools["list_hub_files"] = s.handleListHubFiles
+	s.tools["query_graph"] = s.handleQueryGraph
+	s.tools["get_architecture"] = s.handleGetArchitecture
+	s.tools["trace_dependency"] = s.handleTraceDependency
 }
 
 func (s *Server) registerResources() {
@@ -322,6 +325,48 @@ func (s *Server) handleToolsList(ctx context.Context, req JSONRPCRequest) {
 					"repo_name": {"type": "string", "description": "Optional repository filter"},
 					"max_results": {"type": "integer", "description": "Maximum files to return (default 15)", "default": 15}
 				}
+			}`),
+		},
+		{
+			Name:        "query_graph",
+			Description: "Query the knowledge graph: neighbors of a file, hotspots, or dependency paths between files. Modes: 'neighbors' (files connected to a file), 'hotspots' (most connected files), 'path' (dependency chain between two files).",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"mode": {"type": "string", "enum": ["neighbors", "hotspots", "path"], "description": "Query mode"},
+					"repo_name": {"type": "string", "description": "Repository name"},
+					"path": {"type": "string", "description": "File path for neighbors/path mode"},
+					"target_path": {"type": "string", "description": "Target file path for path mode"},
+					"max_results": {"type": "integer", "description": "Maximum results (default 20)", "default": 20}
+				},
+				"required": ["mode", "repo_name"]
+			}`),
+		},
+		{
+			Name:        "get_architecture",
+			Description: "Get a high-level architecture overview: language breakdown, packages/directories, entry points (most outgoing edges), and hotspots (most total connections).",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"repo_name": {"type": "string", "description": "Repository name"},
+					"max_results": {"type": "integer", "description": "Maximum results per section (default 10)", "default": 10}
+				},
+				"required": ["repo_name"]
+			}`),
+		},
+		{
+			Name:        "trace_dependency",
+			Description: "Trace import/reference dependencies for a file: shows what it imports (outbound) and what imports it (inbound). Optionally follow recursively.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"repo_name": {"type": "string", "description": "Repository name"},
+					"path": {"type": "string", "description": "File path to trace"},
+					"direction": {"type": "string", "enum": ["outbound", "inbound", "both"], "description": "Direction to trace (default: both)", "default": "both"},
+					"depth": {"type": "integer", "description": "Recursion depth (0 = no recursion, default 1)", "default": 1},
+					"max_results": {"type": "integer", "description": "Maximum results per level (default 20)", "default": 20}
+				},
+				"required": ["repo_name", "path"]
 			}`),
 		},
 	}

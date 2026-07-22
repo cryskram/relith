@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -149,6 +150,10 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repoPath string, repoID int64
 	}
 
 	now := time.Now()
+	if err := idx.BuildGraphForRepo(ctx, repoID, repoPath); err != nil {
+		idx.logger.Warn().Err(err).Msg("graph build failed (non-fatal)")
+	}
+
 	if err := q.UpdateRepoStatus(ctx, db.UpdateRepoStatusParams{
 		ID:            repoID,
 		Status:        "ready",
@@ -290,6 +295,12 @@ func (idx *Indexer) IndexFile(ctx context.Context, repoID int64, relPath, fullPa
 		}
 	}
 
+	repoPath := strings.TrimSuffix(fullPath, relPath)
+	repoPath = strings.TrimSuffix(repoPath, "/")
+	if err := idx.updateGraphForFile(ctx, repoID, repoPath, relPath, docID); err != nil {
+		idx.logger.Warn().Err(err).Str("path", relPath).Msg("graph update failed (non-fatal)")
+	}
+
 	return tx.Commit()
 }
 
@@ -385,13 +396,15 @@ func (idx *Indexer) prepareBatchWork(fi FileInfo, existing db.Document) (batchWo
 		return batchWork{}, true, nil
 	}
 
+	refs := ExtractReferences(content)
+
 	return batchWork{
 		relPath:  fi.RelPath,
 		fullPath: fi.FullPath,
 		content:  content,
 		hash:     hash,
 		chunks:   chunks,
-		refs:     ExtractReferences(content),
+		refs:     refs,
 		lang:     lang,
 		size:     fi.Size,
 		modTime:  fi.ModTime,

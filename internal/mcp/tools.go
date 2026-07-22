@@ -914,3 +914,421 @@ func (s *Server) handleGetRepoSummary(ctx context.Context, params map[string]any
 
 	return s.textContent(sb.String())
 }
+
+func (s *Server) handleQueryGraph(ctx context.Context, params map[string]any) CallToolResult {
+	mode := strParam(params, "mode")
+	repoName := strParam(params, "repo_name")
+	path := strParam(params, "path")
+	targetPath := strParam(params, "target_path")
+	maxResults := intParam(params, "max_results", 20)
+
+	if mode == "" {
+		return s.errorContent("mode is required (neighbors, hotspots, path)")
+	}
+	if repoName == "" {
+		return s.errorContent("repo_name is required")
+	}
+
+	repo, err := s.findRepo(ctx, repoName)
+	if err != nil {
+		return s.errorContent(err.Error())
+	}
+
+	switch mode {
+	case "neighbors":
+		return s.queryGraphNeighbors(ctx, repo, path, maxResults)
+	case "hotspots":
+		return s.queryGraphHotspots(ctx, repo, maxResults)
+	case "path":
+		return s.queryGraphPath(ctx, repo, path, targetPath, maxResults)
+	default:
+		return s.errorContent(fmt.Sprintf("unknown mode: %s (use neighbors, hotspots, or path)", mode))
+	}
+}
+
+func (s *Server) queryGraphNeighbors(ctx context.Context, repo db.Repository, path string, maxResults int) CallToolResult {
+	if path == "" {
+		return s.errorContent("path is required for neighbors mode")
+	}
+
+	var docID int64
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM documents WHERE repo_id = ? AND path = ?`, repo.ID, path).Scan(&docID)
+	if err != nil {
+		return s.errorContent(fmt.Sprintf("file not found: %s", path))
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT target_doc_id, kind, weight FROM graph_edges WHERE source_doc_id = ? AND repo_id = ?
+		UNION ALL
+		SELECT source_doc_id, kind, weight FROM graph_edges WHERE target_doc_id = ? AND repo_id = ?
+		ORDER BY weight DESC LIMIT ?`, docID, repo.ID, docID, repo.ID, maxResults)
+	if err != nil {
+		return s.errorContent(fmt.Sprintf("query graph: %v", err))
+	}
+	defer rows.Close()
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Neighbors of %s:\n\n", path))
+	count := 0
+	for rows.Next() {
+		var neighborID int64
+		var kind string
+		var weight int64
+		if err := rows.Scan(&neighborID, &kind, &weight); err != nil {
+			continue
+		}
+		var p string
+		s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, neighborID).Scan(&p)
+		sb.WriteString(fmt.Sprintf("  %s (weight=%d, kind=%s)\n", p, weight, kind))
+		count++
+	}
+	if count == 0 {
+		sb.WriteString("  (no connections)\n")
+	}
+	return s.textContent(sb.String())
+}
+
+func (s *Server) queryGraphHotspots(ctx context.Context, repo db.Repository, maxResults int) CallToolResult {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT doc_id, COUNT(*) AS cnt FROM (
+			SELECT source_doc_id AS doc_id FROM graph_edges WHERE repo_id = ?
+			UNION ALL
+			SELECT target_doc_id AS doc_id FROM graph_edges WHERE repo_id = ?
+		) GROUP BY doc_id ORDER BY cnt DESC LIMIT ?`, repo.ID, repo.ID, maxResults)
+	if err != nil {
+		return s.errorContent(fmt.Sprintf("query hotspots: %v", err))
+	}
+	defer rows.Close()
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Hotspots (most connected files) for %s:\n\n", repo.Name))
+	count := 0
+	for rows.Next() {
+		var docID, cnt int64
+		if err := rows.Scan(&docID, &cnt); err != nil {
+			continue
+		}
+		var p string
+		s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, docID).Scan(&p)
+		sb.WriteString(fmt.Sprintf("  %4d  %s\n", cnt, p))
+		count++
+	}
+	if count == 0 {
+		sb.WriteString("  (no graph edges yet — index the repo first)\n")
+	}
+	return s.textContent(sb.String())
+}
+
+func (s *Server) queryGraphPath(ctx context.Context, repo db.Repository, fromPath, toPath string, maxResults int) CallToolResult {
+	if fromPath == "" || toPath == "" {
+		return s.errorContent("both path and target_path are required for path mode")
+	}
+
+	var fromID, toID int64
+	if err := s.db.QueryRowContext(ctx, `SELECT id FROM documents WHERE repo_id = ? AND path = ?`, repo.ID, fromPath).Scan(&fromID); err != nil {
+		return s.errorContent(fmt.Sprintf("file not found: %s", fromPath))
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT id FROM documents WHERE repo_id = ? AND path = ?`, repo.ID, toPath).Scan(&toID); err != nil {
+		return s.errorContent(fmt.Sprintf("file not found: %s", toPath))
+	}
+
+	visited := map[int64]bool{}
+	var path []string
+	var found bool
+	var bfs func(id int64, depth int) bool
+	bfs = func(id int64, depth int) bool {
+		if id == toID || found {
+			return true
+		}
+		if depth > maxResults || visited[id] {
+			return false
+		}
+		visited[id] = true
+
+		rows, err := s.db.QueryContext(ctx, `SELECT target_doc_id FROM graph_edges WHERE source_doc_id = ? AND repo_id = ? LIMIT 10`, id, repo.ID)
+		if err != nil {
+			return false
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var targetID int64
+			if err := rows.Scan(&targetID); err != nil {
+				continue
+			}
+			if visited[targetID] {
+				continue
+			}
+			if bfs(targetID, depth+1) {
+				var p string
+				s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, targetID).Scan(&p)
+				path = append([]string{p}, path...)
+				return true
+			}
+		}
+		return false
+	}
+
+	if bfs(fromID, 0) {
+		var fromPathName string
+		s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, fromID).Scan(&fromPathName)
+		path = append([]string{fromPathName}, path...)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Dependency path from %s to %s:\n\n", fromPath, toPath))
+	if len(path) == 0 {
+		sb.WriteString("  (no path found)\n")
+	} else {
+		for i, p := range path {
+			arrow := "  "
+			if i < len(path)-1 {
+				arrow = "→ "
+			}
+			sb.WriteString(fmt.Sprintf("  %s %s\n", arrow, p))
+		}
+	}
+	return s.textContent(sb.String())
+}
+
+func (s *Server) handleGetArchitecture(ctx context.Context, params map[string]any) CallToolResult {
+	repoName := strParam(params, "repo_name")
+	maxResults := intParam(params, "max_results", 10)
+
+	if repoName == "" {
+		return s.errorContent("repo_name is required")
+	}
+
+	repo, err := s.findRepo(ctx, repoName)
+	if err != nil {
+		return s.errorContent(err.Error())
+	}
+
+	docs, err := s.queries.ListDocuments(ctx, repo.ID)
+	if err != nil {
+		return s.errorContent(fmt.Sprintf("list docs: %v", err))
+	}
+	if len(docs) == 0 {
+		return s.textContent("No files indexed. Run `relith index` first.")
+	}
+
+	docMap := make(map[int64]string, len(docs))
+	langCount := make(map[string]int)
+	pkgCount := make(map[string]int)
+	for _, d := range docs {
+		docMap[d.ID] = d.Path
+		lang := d.Language.String
+		if lang == "" {
+			lang = "unknown"
+		}
+		langCount[lang]++
+
+		dir := filepath.Dir(d.Path)
+		if dir == "." {
+			dir = "/"
+		}
+		pkgCount[dir]++
+	}
+
+	type pkgInfo struct {
+		name  string
+		count int
+	}
+	var pkgs []pkgInfo
+	for name, count := range pkgCount {
+		pkgs = append(pkgs, pkgInfo{name, count})
+	}
+	sort.Slice(pkgs, func(i, j int) bool {
+		if pkgs[i].count == pkgs[j].count {
+			return pkgs[i].name < pkgs[j].name
+		}
+		return pkgs[i].count > pkgs[j].count
+	})
+	if len(pkgs) > maxResults {
+		pkgs = pkgs[:maxResults]
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Architecture overview for %s:\n\n", repoName))
+	sb.WriteString(fmt.Sprintf("Total files: %d\n\n", len(docs)))
+
+	sb.WriteString("Languages:\n")
+	type langInfo struct {
+		name  string
+		count int
+	}
+	var langs []langInfo
+	for name, count := range langCount {
+		langs = append(langs, langInfo{name, count})
+	}
+	sort.Slice(langs, func(i, j int) bool { return langs[i].count > langs[j].count })
+	for _, l := range langs {
+		pct := float64(l.count) / float64(len(docs)) * 100
+		sb.WriteString(fmt.Sprintf("  %-15s %5d files (%5.1f%%)\n", l.name+":", l.count, pct))
+	}
+
+	sb.WriteString("\nTop packages/directories:\n")
+	for _, p := range pkgs {
+		sb.WriteString(fmt.Sprintf("  %-30s %5d files\n", p.name, p.count))
+	}
+
+	hotRows, err := s.db.QueryContext(ctx, `
+		SELECT doc_id, COUNT(*) AS cnt FROM (
+			SELECT source_doc_id AS doc_id FROM graph_edges WHERE repo_id = ?
+			UNION ALL
+			SELECT target_doc_id AS doc_id FROM graph_edges WHERE repo_id = ?
+		) GROUP BY doc_id ORDER BY cnt DESC LIMIT ?`, repo.ID, repo.ID, maxResults)
+	if err == nil {
+		defer hotRows.Close()
+		var hasHot bool
+		var hotSb strings.Builder
+		hotSb.WriteString("\nHotspots (most connected files):\n")
+		for hotRows.Next() {
+			var docID, cnt int64
+			if err := hotRows.Scan(&docID, &cnt); err != nil {
+				continue
+			}
+			p := docMap[docID]
+			if p == "" {
+				continue
+			}
+			hasHot = true
+			hotSb.WriteString(fmt.Sprintf("  %4d connections  %s\n", cnt, p))
+		}
+		if hasHot {
+			sb.WriteString(hotSb.String())
+		}
+		hotRows.Close()
+	}
+
+	entryRows, err := s.db.QueryContext(ctx, `
+		SELECT source_doc_id, COUNT(*) AS cnt FROM graph_edges WHERE repo_id = ? AND kind = 'imports' GROUP BY source_doc_id ORDER BY cnt DESC LIMIT ?`, repo.ID, maxResults)
+	if err == nil {
+		defer entryRows.Close()
+		var hasEntry bool
+		var entrySb strings.Builder
+		entrySb.WriteString("\nEntry points (most outbound imports):\n")
+		for entryRows.Next() {
+			var docID, cnt int64
+			if err := entryRows.Scan(&docID, &cnt); err != nil {
+				continue
+			}
+			p := docMap[docID]
+			if p == "" {
+				continue
+			}
+			hasEntry = true
+			entrySb.WriteString(fmt.Sprintf("  %4d imports  %s\n", cnt, p))
+		}
+		if hasEntry {
+			sb.WriteString(entrySb.String())
+		}
+		entryRows.Close()
+	}
+
+	return s.textContent(sb.String())
+}
+
+func (s *Server) handleTraceDependency(ctx context.Context, params map[string]any) CallToolResult {
+	repoName := strParam(params, "repo_name")
+	path := strParam(params, "path")
+	direction := strParam(params, "direction")
+	depth := intParam(params, "depth", 1)
+	maxResults := intParam(params, "max_results", 20)
+
+	if repoName == "" || path == "" {
+		return s.errorContent("repo_name and path are required")
+	}
+	if direction == "" {
+		direction = "both"
+	}
+
+	repo, err := s.findRepo(ctx, repoName)
+	if err != nil {
+		return s.errorContent(err.Error())
+	}
+
+	type dep struct {
+		path   string
+		kind   string
+		weight int64
+		level  int
+	}
+
+	var allDeps []dep
+	seen := map[string]bool{}
+	var walk func(currentPath string, currentDir string, remaining int)
+	walk = func(currentPath string, currentDir string, remaining int) {
+		if remaining < 0 || seen[currentPath] {
+			return
+		}
+		seen[currentPath] = true
+
+		var docID int64
+		if err := s.db.QueryRowContext(ctx, `SELECT id FROM documents WHERE repo_id = ? AND path = ?`, repo.ID, currentPath).Scan(&docID); err != nil {
+			return
+		}
+
+		if direction == "outbound" || direction == "both" {
+			rows, err := s.db.QueryContext(ctx, `SELECT target_doc_id, kind, weight FROM graph_edges WHERE source_doc_id = ? AND repo_id = ? LIMIT ?`, docID, repo.ID, maxResults)
+			if err == nil {
+				for rows.Next() {
+					var tgtID int64
+					var k string
+					var w int64
+					if err := rows.Scan(&tgtID, &k, &w); err != nil {
+						continue
+					}
+					var p string
+					s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, tgtID).Scan(&p)
+					if p == "" || seen[p] {
+						continue
+					}
+					allDeps = append(allDeps, dep{p, "out:" + k, w, depth - remaining})
+					if remaining > 0 {
+						walk(p, filepath.Dir(p), remaining-1)
+					}
+				}
+				rows.Close()
+			}
+		}
+
+		if direction == "inbound" || direction == "both" {
+			rows, err := s.db.QueryContext(ctx, `SELECT source_doc_id, kind, weight FROM graph_edges WHERE target_doc_id = ? AND repo_id = ? LIMIT ?`, docID, repo.ID, maxResults)
+			if err == nil {
+				for rows.Next() {
+					var srcID int64
+					var k string
+					var w int64
+					if err := rows.Scan(&srcID, &k, &w); err != nil {
+						continue
+					}
+					var p string
+					s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, srcID).Scan(&p)
+					if p == "" || seen[p] {
+						continue
+					}
+					allDeps = append(allDeps, dep{p, "in:" + k, w, depth - remaining})
+					if remaining > 0 {
+						walk(p, filepath.Dir(p), remaining-1)
+					}
+				}
+				rows.Close()
+			}
+		}
+	}
+
+	walk(path, filepath.Dir(path), depth)
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Dependencies for %s (direction=%s, depth=%d):\n\n", path, direction, depth))
+	if len(allDeps) == 0 {
+		sb.WriteString("  (no dependencies found)\n")
+	} else {
+		for _, d := range allDeps {
+			indent := strings.Repeat("  ", d.level)
+			sb.WriteString(fmt.Sprintf("  %s%s [%s] (weight=%d)\n", indent, d.path, d.kind, d.weight))
+		}
+	}
+	return s.textContent(sb.String())
+}

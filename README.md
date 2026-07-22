@@ -22,6 +22,7 @@ Relith is a **local-first context engine** that indexes your codebases and expos
 - **Full-text search** - SQLite FTS5 with BM25 ranking, prefix matching, boolean operators
 - **Multi-repo support** - Index unlimited repos, search across them all at once
 - **Cross-file reasoning** - Search + symbols + references + graph neighbors in one bundle
+- **Knowledge graph** - Typed dependency graph with import and reference edges, BFS trace, hotspot detection, and architecture overview
 - **MCP-native** - Works with Cursor, Claude Code, OpenCode, and any MCP client
 - **REST API** - HTTP server for scripts, CI pipelines, and programmatic access
 - **File watcher** - Auto-reindexes changed files via fsnotify
@@ -82,6 +83,9 @@ Relith exposes an **MCP server** that AI assistants connect to directly. Support
 | `find_callers` | Find exact call sites for a symbol name | `name` (req), `repo_name`, `max_results` |
 | `get_related_files` | Show graph-neighbor files for a repo/path | `repo_name` (req), `path` (req), `max_results` |
 | `list_hub_files` | List the most connected files in a repository | `repo_name`, `max_results` |
+| `query_graph` | Query the knowledge graph: neighbors, hotspots, or dependency paths | `mode` (req), `repo_name` (req), `path`, `target_path`, `max_results` |
+| `get_architecture` | Architecture overview: languages, packages, entry points, hotspots | `repo_name` (req), `max_results` |
+| `trace_dependency` | Trace import/reference chains from a file, optionally recursive | `repo_name` (req), `path` (req), `direction`, `depth`, `max_results` |
 
 ### Prerequisites
 

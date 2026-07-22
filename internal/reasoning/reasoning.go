@@ -432,16 +432,6 @@ func extractTerms(q string) []string {
 	return terms
 }
 
-func filterSearchHits(hits []search.Result, repoName string) []search.Result {
-	var out []search.Result
-	for _, h := range hits {
-		if h.RepoName == repoName {
-			out = append(out, h)
-		}
-	}
-	return out
-}
-
 func appendUniqueReason(existing []string, reasons ...string) []string {
 	seen := map[string]bool{}
 	for _, r := range existing {

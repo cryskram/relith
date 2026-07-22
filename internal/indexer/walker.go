@@ -8,31 +8,31 @@ import (
 )
 
 var skipDirs = map[string]bool{
-	".git":           true,
-	"node_modules":   true,
-	"vendor":         true,
-	"target":         true,
-	"build":          true,
-	"dist":           true,
-	"out":            true,
-	"bin":            true,
-	"obj":            true,
-	"__pycache__":    true,
-	".venv":          true,
-	"venv":           true,
-	".env":           true,
-	".mypy_cache":    true,
-	".cache":         true,
-	"__MACOSX":       true,
-	".hg":            true,
-	".svn":           true,
-	".idea":          true,
-	".vscode":        true,
-	".DS_Store":      true,
-	".sass-cache":    true,
-	"coverage":       true,
-	".next":          true,
-	".nuxt":          true,
+	".git":         true,
+	"node_modules": true,
+	"vendor":       true,
+	"target":       true,
+	"build":        true,
+	"dist":         true,
+	"out":          true,
+	"bin":          true,
+	"obj":          true,
+	"__pycache__":  true,
+	".venv":        true,
+	"venv":         true,
+	".env":         true,
+	".mypy_cache":  true,
+	".cache":       true,
+	"__MACOSX":     true,
+	".hg":          true,
+	".svn":         true,
+	".idea":        true,
+	".vscode":      true,
+	".DS_Store":    true,
+	".sass-cache":  true,
+	"coverage":     true,
+	".next":        true,
+	".nuxt":        true,
 }
 
 var binaryExts = map[string]bool{
@@ -59,23 +59,23 @@ type FileInfo struct {
 }
 
 var highValueFiles = map[string]bool{
-	"main.go":          true,
-	"app.go":           true,
-	"main.rs":          true,
-	"lib.rs":           true,
-	"index.js":         true,
-	"index.ts":         true,
-	"index.tsx":        true,
-	"index.jsx":        true,
-	"main.js":          true,
-	"main.ts":          true,
-	"main.py":          true,
-	"__init__.py":      true,
-	"package.json":     true,
-	"tsconfig.json":    true,
-	"go.mod":           true,
-	"Cargo.toml":       true,
-	"pyproject.toml":   true,
+	"main.go":        true,
+	"app.go":         true,
+	"main.rs":        true,
+	"lib.rs":         true,
+	"index.js":       true,
+	"index.ts":       true,
+	"index.tsx":      true,
+	"index.jsx":      true,
+	"main.js":        true,
+	"main.ts":        true,
+	"main.py":        true,
+	"__init__.py":    true,
+	"package.json":   true,
+	"tsconfig.json":  true,
+	"go.mod":         true,
+	"Cargo.toml":     true,
+	"pyproject.toml": true,
 }
 
 func WalkRepo(rootPath string, maxFileSize int64) ([]FileInfo, error) {
@@ -125,8 +125,7 @@ func WalkRepo(rootPath string, maxFileSize int64) ([]FileInfo, error) {
 		}
 
 		files := &normal
-		base := filepath.Base(rel)
-		if highValueFiles[base] {
+		if highValueFiles[name] {
 			files = &high
 		}
 		*files = append(*files, FileInfo{
