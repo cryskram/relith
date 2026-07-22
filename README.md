@@ -21,9 +21,12 @@ Relith is a **local-first context engine** that indexes your codebases and expos
 
 - **Full-text search** - SQLite FTS5 with BM25 ranking, prefix matching, boolean operators
 - **Multi-repo support** - Index unlimited repos, search across them all at once
-- **Cross-file reasoning** - Search + symbols + references + graph neighbors in one bundle
 - **Knowledge graph** - Typed dependency graph with import and reference edges, BFS trace, hotspot detection, and architecture overview
+- **Import resolver** - Resolves import statements across JS/TS, Go, Python, and Rust to build a cross-file dependency map
+- **AST-based chunking** - Language-aware parsers for Go, Python, JavaScript, TypeScript, and Rust (functions/classes instead of 50-line windows)
+- **Cross-file reasoning** - Search + symbols + references + graph neighbors in one bundle
 - **MCP-native** - Works with Cursor, Claude Code, OpenCode, and any MCP client
+- **Auto-install** - `relith install` detects and configures your coding agents automatically
 - **REST API** - HTTP server for scripts, CI pipelines, and programmatic access
 - **File watcher** - Auto-reindexes changed files via fsnotify
 - **Local-first** - Your code never leaves your machine, zero cloud dependencies
@@ -44,7 +47,10 @@ make build-all
 # Search
 ./bin/relith search "your query"
 
-# Launch daemon for MCP
+# Auto-install MCP for your AI agent
+./bin/relith install
+
+# Or launch daemon for REST API + dashboard
 ./bin/relithd
 ```
 
@@ -56,12 +62,14 @@ make build-all
 |---------|-------------|
 | `relith repo add <path>` | Register a repository for indexing |
 | `relith repo list` | List all indexed repositories |
-| `relith repo remove <id-or-name>` | Remove a repository and all its data (auto-VACUUM if >20% free pages) |
+| `relith repo remove <id-or-name>` | Remove a repository and all its data |
 | `relith index [path]` | Index a repo (or all pending) |
-| `relith db vacuum` | Reclaim unused database space from deleted rows and free pages |
 | `relith search <query>` | Full-text search across all indexed code |
-| `relith serve` | Start the daemon (REST API + dashboard + file watcher) |
 | `relith status` | Show indexing status with file/chunk counts |
+| `relith serve` | Start the daemon (REST API + dashboard + file watcher) |
+| `relith install` | Auto-detect and configure MCP for OpenCode, Cursor, and Claude Code |
+| `relith uninstall` | Remove relith MCP configuration from agents |
+| `relith db vacuum` | Reclaim unused database space |
 | `relith version` | Print version |
 
 ## MCP Server
@@ -99,15 +107,35 @@ relith index
 
 ### Setup
 
+The easiest way to connect relith to your AI agent is with one command:
+
+```bash
+relith install
+```
+
+This auto-detects installed agents (OpenCode, Cursor, Claude Code) and writes
+the MCP configuration for each. Run it again to reconfigure for a specific agent:
+
+```bash
+relith install --agent=cursor
+relith install --agent=opencode
+relith install --agent=code   # Claude Code
+```
+
+After running `relith install`, restart your agent. relith's MCP tools will be
+available automatically.
+
+### Manual Setup
+
+If you prefer to configure manually:
+
 **Cursor** - Settings → MCP Servers → Add new:
 
 ```
 Name: relith
 Type: command
-Command: D:\relith\bin\relithmcp.exe
+Command: /path/to/relithmcp
 ```
-
-> **macOS**: If Gatekeeper blocks `relithmcp`, run `xattr -d com.apple.quarantine /path/to/relithmcp` first.
 
 **Claude Code** - add to `~/.config/claude/mcp.json`:
 
@@ -115,13 +143,13 @@ Command: D:\relith\bin\relithmcp.exe
 {
   "mcpServers": {
     "relith": {
-      "command": "relithmcp"
+      "command": "/path/to/relithmcp"
     }
   }
 }
 ```
 
-> **Windows**: use the full path to `relithmcp.exe` in your MCP config. If you see `permission denied`, move the binary to a user-writable folder and check Windows Defender/SmartScreen for a block.
+> **macOS**: If Gatekeeper blocks the binary, run `xattr -d com.apple.quarantine /path/to/relithmcp` first.
 
 ## REST API
 
