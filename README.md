@@ -76,6 +76,10 @@ Relith exposes an **MCP server** that AI assistants connect to directly. Support
 | `find_symbol` | Search symbols by name prefix (functions, classes, structs, etc.) | `name` (req), `kind`, `repo_name` |
 | `find_references` | Find all call sites for a symbol across all repos | `name` (req), `repo_name` |
 | `trace_context` | Cross-file reasoning bundle: search + symbols + references + graph-linked files | `query` (req), `repo_name`, `max_results` |
+| `get_file_outline` | Compact file summary: metadata, chunks, symbols, references | `repo_name` (req), `path` (req) |
+| `find_callers` | Find exact call sites for a symbol name | `name` (req), `repo_name`, `max_results` |
+| `get_related_files` | Show graph-neighbor files for a repo/path | `repo_name` (req), `path` (req), `max_results` |
+| `list_hub_files` | List the most connected files in a repository | `repo_name`, `max_results` |
 
 ### Prerequisites
 

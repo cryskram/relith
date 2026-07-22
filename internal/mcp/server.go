@@ -73,6 +73,10 @@ func (s *Server) registerTools() {
 	s.tools["find_symbol"] = s.handleFindSymbol
 	s.tools["find_references"] = s.handleFindReferences
 	s.tools["trace_context"] = s.handleTraceContext
+	s.tools["get_file_outline"] = s.handleGetFileOutline
+	s.tools["find_callers"] = s.handleFindCallers
+	s.tools["get_related_files"] = s.handleGetRelatedFiles
+	s.tools["list_hub_files"] = s.handleListHubFiles
 }
 
 func (s *Server) registerResources() {
@@ -240,6 +244,55 @@ func (s *Server) handleToolsList(ctx context.Context, req JSONRPCRequest) {
 					"max_results": {"type": "integer", "description": "Maximum files to return (default 8)", "default": 8}
 				},
 				"required": ["query"]
+			}`),
+		},
+		{
+			Name:        "get_file_outline",
+			Description: "Get a compact outline of a file: metadata, symbols, chunks, and nearby references.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"repo_name": {"type": "string", "description": "Repository name"},
+					"path": {"type": "string", "description": "File path relative to repository root"}
+				},
+				"required": ["repo_name", "path"]
+			}`),
+		},
+		{
+			Name:        "find_callers",
+			Description: "Find exact call sites for a symbol name across repositories or within one repository.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"name": {"type": "string", "description": "Exact symbol name"},
+					"repo_name": {"type": "string", "description": "Optional repository filter"},
+					"max_results": {"type": "integer", "description": "Maximum callers to return (default 20)", "default": 20}
+				},
+				"required": ["name"]
+			}`),
+		},
+		{
+			Name:        "get_related_files",
+			Description: "Show the graph-neighbor files for a given repo/path, useful for following a feature across the codebase.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"repo_name": {"type": "string", "description": "Repository name"},
+					"path": {"type": "string", "description": "File path relative to repository root"},
+					"max_results": {"type": "integer", "description": "Maximum related files to return (default 12)", "default": 12}
+				},
+				"required": ["repo_name", "path"]
+			}`),
+		},
+		{
+			Name:        "list_hub_files",
+			Description: "List the most connected files in a repository. Great for finding architecture hubs and hot spots.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"repo_name": {"type": "string", "description": "Optional repository filter"},
+					"max_results": {"type": "integer", "description": "Maximum files to return (default 15)", "default": 15}
+				}
 			}`),
 		},
 	}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/cryskram/relith/internal/db"
@@ -170,6 +171,298 @@ func (s *Server) handleTraceContext(ctx context.Context, params map[string]any) 
 	return s.textContent(bundle.Text())
 }
 
+func (s *Server) handleGetFileOutline(ctx context.Context, params map[string]any) CallToolResult {
+	repoName := strParam(params, "repo_name")
+	filePath := strParam(params, "path")
+	if repoName == "" || filePath == "" {
+		return s.errorContent("repo_name and path are required")
+	}
+
+	repo, err := s.findRepo(ctx, repoName)
+	if err != nil {
+		return s.errorContent(err.Error())
+	}
+
+	doc, err := s.queries.GetDocumentByPath(ctx, db.GetDocumentByPathParams{RepoID: repo.ID, Path: filePath})
+	if err != nil {
+		return s.errorContent(fmt.Sprintf("file not found: %s in %s", filePath, repoName))
+	}
+
+	chunks, err := s.queries.ListChunks(ctx, doc.ID)
+	if err != nil {
+		return s.errorContent(fmt.Sprintf("list chunks failed: %v", err))
+	}
+
+	symbolRows, err := s.db.QueryContext(ctx, `SELECT id, name, kind, line, col FROM symbols WHERE doc_id = ? ORDER BY line`, doc.ID)
+	if err != nil {
+		return s.errorContent(fmt.Sprintf("list symbols failed: %v", err))
+	}
+	defer symbolRows.Close()
+
+	type symbol struct {
+		ID   int64
+		Name string
+		Kind string
+		Line int64
+		Col  int64
+	}
+	var symbols []symbol
+	for symbolRows.Next() {
+		var srow symbol
+		if err := symbolRows.Scan(&srow.ID, &srow.Name, &srow.Kind, &srow.Line, &srow.Col); err != nil {
+			return s.errorContent(fmt.Sprintf("scan symbols failed: %v", err))
+		}
+		symbols = append(symbols, srow)
+	}
+
+	refRows, err := s.db.QueryContext(ctx, `SELECT id, name, line, col, context FROM refs WHERE doc_id = ? ORDER BY line LIMIT 40`, doc.ID)
+	if err != nil {
+		return s.errorContent(fmt.Sprintf("list refs failed: %v", err))
+	}
+	defer refRows.Close()
+
+	type ref struct {
+		ID      int64
+		Name    string
+		Line    int64
+		Col     int64
+		Context string
+	}
+	var refs []ref
+	for refRows.Next() {
+		var r ref
+		if err := refRows.Scan(&r.ID, &r.Name, &r.Line, &r.Col, &r.Context); err != nil {
+			return s.errorContent(fmt.Sprintf("scan refs failed: %v", err))
+		}
+		refs = append(refs, r)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("File Outline: %s/%s\n", repo.Name, doc.Path))
+	sb.WriteString(fmt.Sprintf("Language: %s\n", doc.Language.String))
+	sb.WriteString(fmt.Sprintf("Size: %d bytes\n", doc.Size))
+	sb.WriteString(fmt.Sprintf("Chunks: %d\n\n", len(chunks)))
+
+	sb.WriteString("Symbols:\n")
+	if len(symbols) == 0 {
+		sb.WriteString("  (none)\n")
+	} else {
+		for _, sym := range symbols {
+			sb.WriteString(fmt.Sprintf("  - %s (%s) at %d:%d\n", sym.Name, sym.Kind, sym.Line, sym.Col))
+		}
+	}
+
+	sb.WriteString("\nReferences:\n")
+	if len(refs) == 0 {
+		sb.WriteString("  (none)\n")
+	} else {
+		for _, r := range refs {
+			sb.WriteString(fmt.Sprintf("  - %s at %d:%d\n    %s\n", r.Name, r.Line, r.Col, r.Context))
+		}
+	}
+
+	return s.textContent(sb.String())
+}
+
+func (s *Server) handleFindCallers(ctx context.Context, params map[string]any) CallToolResult {
+	name := strParam(params, "name")
+	if name == "" {
+		return s.errorContent("name is required")
+	}
+	repoName := strParam(params, "repo_name")
+	maxResults := intParam(params, "max_results", 20)
+
+	query := `SELECT r.id, r.doc_id, r.name, r.line, r.col, r.context, d.path, r2.name AS repo_name
+FROM refs r
+JOIN documents d ON d.id = r.doc_id
+JOIN repositories r2 ON r2.id = d.repo_id
+WHERE r.name = ?`
+	args := []any{name}
+	if repoName != "" {
+		query += ` AND r2.name = ?`
+		args = append(args, repoName)
+	}
+	query += ` ORDER BY r2.name, d.path, r.line LIMIT ?`
+	args = append(args, maxResults)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return s.errorContent(fmt.Sprintf("find callers failed: %v", err))
+	}
+	defer rows.Close()
+
+	type caller struct {
+		Path     string
+		RepoName string
+		Line     int64
+		Col      int64
+		Context  string
+	}
+	var callers []caller
+	for rows.Next() {
+		var c caller
+		var id, docID int64
+		var refName string
+		if err := rows.Scan(&id, &docID, &refName, &c.Line, &c.Col, &c.Context, &c.Path, &c.RepoName); err != nil {
+			return s.errorContent(fmt.Sprintf("scan callers failed: %v", err))
+		}
+		callers = append(callers, c)
+	}
+
+	if len(callers) == 0 {
+		return s.textContent("No callers found for: " + name)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Callers for %q:\n\n", name))
+	for i, c := range callers {
+		sb.WriteString(fmt.Sprintf("--- %d ---\n", i+1))
+		sb.WriteString(fmt.Sprintf("Repo:   %s\n", c.RepoName))
+		sb.WriteString(fmt.Sprintf("File:   %s\n", c.Path))
+		sb.WriteString(fmt.Sprintf("Line:   %d:%d\n", c.Line, c.Col))
+		sb.WriteString(fmt.Sprintf("Context: %s\n\n", c.Context))
+	}
+	return s.textContent(sb.String())
+}
+
+func (s *Server) handleGetRelatedFiles(ctx context.Context, params map[string]any) CallToolResult {
+	repoName := strParam(params, "repo_name")
+	filePath := strParam(params, "path")
+	maxResults := intParam(params, "max_results", 12)
+	if repoName == "" || filePath == "" {
+		return s.errorContent("repo_name and path are required")
+	}
+
+	repo, err := s.findRepo(ctx, repoName)
+	if err != nil {
+		return s.errorContent(err.Error())
+	}
+
+	doc, err := s.queries.GetDocumentByPath(ctx, db.GetDocumentByPathParams{RepoID: repo.ID, Path: filePath})
+	if err != nil {
+		return s.errorContent(fmt.Sprintf("file not found: %s in %s", filePath, repoName))
+	}
+
+	edges, err := s.queries.GetGraphEdges(ctx, repo.ID)
+	if err != nil {
+		return s.errorContent(fmt.Sprintf("graph edges failed: %v", err))
+	}
+
+	type related struct {
+		Path   string
+		Weight int64
+	}
+	byPath := map[string]int64{}
+	for _, e := range edges {
+		switch {
+		case e.SourceID == doc.ID:
+			byPath[e.TargetPath] += e.Weight
+		case e.TargetID == doc.ID:
+			byPath[e.SourcePath] += e.Weight
+		}
+	}
+
+	var relatedFiles []related
+	for path, weight := range byPath {
+		relatedFiles = append(relatedFiles, related{Path: path, Weight: weight})
+	}
+	sort.Slice(relatedFiles, func(i, j int) bool {
+		if relatedFiles[i].Weight == relatedFiles[j].Weight {
+			return relatedFiles[i].Path < relatedFiles[j].Path
+		}
+		return relatedFiles[i].Weight > relatedFiles[j].Weight
+	})
+	if len(relatedFiles) > maxResults {
+		relatedFiles = relatedFiles[:maxResults]
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Related files for %s/%s:\n\n", repo.Name, doc.Path))
+	if len(relatedFiles) == 0 {
+		sb.WriteString("  (none)\n")
+		return s.textContent(sb.String())
+	}
+	for i, r := range relatedFiles {
+		sb.WriteString(fmt.Sprintf("--- %d ---\n", i+1))
+		sb.WriteString(fmt.Sprintf("Path:   %s\n", r.Path))
+		sb.WriteString(fmt.Sprintf("Weight: %d\n\n", r.Weight))
+	}
+	return s.textContent(sb.String())
+}
+
+func (s *Server) handleListHubFiles(ctx context.Context, params map[string]any) CallToolResult {
+	repoName := strParam(params, "repo_name")
+	maxResults := intParam(params, "max_results", 15)
+
+	repos, err := s.queries.ListRepos(ctx)
+	if err != nil {
+		return s.errorContent(fmt.Sprintf("list repos failed: %v", err))
+	}
+
+	var repoIDs []db.Repository
+	for _, r := range repos {
+		if repoName == "" || r.Name == repoName {
+			repoIDs = append(repoIDs, r)
+		}
+	}
+	if len(repoIDs) == 0 {
+		return s.textContent("No repositories matched.")
+	}
+
+	type hub struct {
+		RepoName string
+		Path     string
+		Degree   int64
+	}
+	var hubs []hub
+	for _, repo := range repoIDs {
+		edges, err := s.queries.GetGraphEdges(ctx, repo.ID)
+		if err != nil {
+			continue
+		}
+		degrees := map[int64]*hub{}
+		for _, e := range edges {
+			if _, ok := degrees[e.SourceID]; !ok {
+				degrees[e.SourceID] = &hub{RepoName: repo.Name, Path: e.SourcePath}
+			}
+			if _, ok := degrees[e.TargetID]; !ok {
+				degrees[e.TargetID] = &hub{RepoName: repo.Name, Path: e.TargetPath}
+			}
+			degrees[e.SourceID].Degree += e.Weight
+			degrees[e.TargetID].Degree += e.Weight
+		}
+		for _, h := range degrees {
+			hubs = append(hubs, *h)
+		}
+	}
+
+	sort.Slice(hubs, func(i, j int) bool {
+		if hubs[i].Degree == hubs[j].Degree {
+			if hubs[i].RepoName == hubs[j].RepoName {
+				return hubs[i].Path < hubs[j].Path
+			}
+			return hubs[i].RepoName < hubs[j].RepoName
+		}
+		return hubs[i].Degree > hubs[j].Degree
+	})
+	if len(hubs) > maxResults {
+		hubs = hubs[:maxResults]
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Hub files:\n\n")
+	for i, h := range hubs {
+		sb.WriteString(fmt.Sprintf("--- %d ---\n", i+1))
+		sb.WriteString(fmt.Sprintf("Repo:   %s\n", h.RepoName))
+		sb.WriteString(fmt.Sprintf("Path:   %s\n", h.Path))
+		sb.WriteString(fmt.Sprintf("Degree: %d\n\n", h.Degree))
+	}
+	if len(hubs) == 0 {
+		sb.WriteString("  (none)\n")
+	}
+	return s.textContent(sb.String())
+}
+
 func (s *Server) handleGetFileContent(ctx context.Context, params map[string]any) CallToolResult {
 	repoName := strParam(params, "repo_name")
 	filePath := strParam(params, "path")
@@ -227,6 +520,19 @@ func (s *Server) handleGetFileContent(ctx context.Context, params map[string]any
 	sb.WriteString(content)
 
 	return s.textContent(sb.String())
+}
+
+func (s *Server) findRepo(ctx context.Context, repoName string) (db.Repository, error) {
+	repos, err := s.queries.ListRepos(ctx)
+	if err != nil {
+		return db.Repository{}, fmt.Errorf("list repos: %v", err)
+	}
+	for _, r := range repos {
+		if r.Name == repoName {
+			return r, nil
+		}
+	}
+	return db.Repository{}, fmt.Errorf("repository not found: %s", repoName)
 }
 
 func (s *Server) handleListRepos(ctx context.Context, params map[string]any) CallToolResult {

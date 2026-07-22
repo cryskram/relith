@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -82,51 +83,48 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repoPath string, repoID int64
 		batch := files[i:end]
 
 		var work []batchWork
+		jobs := make(chan batchJob, len(batch))
+		resultsCh := make(chan batchResult, len(batch))
+		workers := idx.cfg.Concurrency
+		if workers < 1 {
+			workers = 1
+		}
+		var wg sync.WaitGroup
+		for i := 0; i < workers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for job := range jobs {
+					prep, skipped, err := idx.prepareBatchWork(job.fi, job.existing)
+					resultsCh <- batchResult{work: prep, skipped: skipped, err: err, relPath: job.fi.RelPath}
+				}
+			}()
+		}
+		go func() {
+			wg.Wait()
+			close(resultsCh)
+		}()
+
 		for _, fi := range batch {
 			visited[fi.RelPath] = struct{}{}
+			existing, _ := existingByPath[fi.RelPath]
+			jobs <- batchJob{fi: fi, existing: existing}
+		}
+		close(jobs)
 
-			existing, exists := existingByPath[fi.RelPath]
-			if exists && existing.Hash == fastHashFile(fi.FullPath) {
-				result.FilesSkipped++
-				continue
-			}
-
-			content, err := ReadFileContent(fi.FullPath, idx.cfg.MaxFileSize)
-			if err != nil {
-				idx.logger.Error().Err(err).Str("file", fi.RelPath).Msg("read file")
+		for res := range resultsCh {
+			if res.err != nil {
+				idx.logger.Error().Err(res.err).Str("file", res.relPath).Msg("prepare file")
 				result.FilesError++
 				continue
 			}
-			if content == "" {
-				continue
-			}
-
-			hash := fastHash(content)
-			if exists && existing.Hash == hash {
+			if res.skipped {
 				result.FilesSkipped++
 				continue
 			}
-
-			lang := DetectLanguage(fi.RelPath)
-			langChunker := chunker.ForLanguage(lang)
-			var chunks []chunker.Chunk
-			if langChunker != nil {
-				chunks = langChunker(content)
-			}
-			if len(chunks) == 0 {
-				continue
-			}
-
-			work = append(work, batchWork{
-				relPath:  fi.RelPath,
-				fullPath: fi.FullPath,
-				content:  content,
-				hash:     hash,
-				chunks:   chunks,
-				lang:     lang,
-				size:     fi.Size,
-				modTime:  fi.ModTime,
-			})
+			work = append(work, res.work)
+			result.FilesIndexed++
+			result.TotalChunks += len(res.work.chunks)
 		}
 
 		if len(work) == 0 {
@@ -135,10 +133,6 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repoPath string, repoID int64
 
 		if err := idx.writeBatch(ctx, repoID, work, existingByPath); err != nil {
 			return result, fmt.Errorf("write batch: %w", err)
-		}
-		result.FilesIndexed += len(work)
-		for _, w := range work {
-			result.TotalChunks += len(w.chunks)
 		}
 	}
 
@@ -198,28 +192,18 @@ func (idx *Indexer) IndexFile(ctx context.Context, repoID int64, relPath, fullPa
 		return fmt.Errorf("get existing doc: %w", err)
 	}
 
-	content, err := ReadFileContent(fullPath, idx.cfg.MaxFileSize)
+	prep, skipped, err := idx.prepareBatchWork(FileInfo{RelPath: relPath, FullPath: fullPath}, existing)
 	if err != nil {
-		return fmt.Errorf("read: %w", err)
+		return err
 	}
-	if content == "" {
+	if skipped {
 		return nil
 	}
-
-	hash := fastHash(content)
-	if existingPtr != nil && existingPtr.Hash == hash {
-		return nil
-	}
-
-	lang := DetectLanguage(relPath)
-	langChunker := chunker.ForLanguage(lang)
-	var chunks []chunker.Chunk
-	if langChunker != nil {
-		chunks = langChunker(content)
-	}
-	if len(chunks) == 0 {
-		return nil
-	}
+	content := prep.content
+	hash := prep.hash
+	lang := prep.lang
+	chunks := prep.chunks
+	refs := prep.refs
 
 	langStr := lang
 	mimeStr := ""
@@ -294,7 +278,6 @@ func (idx *Indexer) IndexFile(ctx context.Context, repoID int64, relPath, fullPa
 		}
 	}
 
-	refs := ExtractReferences(content)
 	for _, r := range refs {
 		if _, err := qtx.CreateRef(ctx, db.CreateRefParams{
 			DocID:   docID,
@@ -356,9 +339,59 @@ type batchWork struct {
 	content  string
 	hash     string
 	chunks   []chunker.Chunk
+	refs     []Ref
 	lang     string
 	size     int64
 	modTime  int64
+}
+
+type batchJob struct {
+	fi       FileInfo
+	existing db.Document
+}
+
+type batchResult struct {
+	work    batchWork
+	skipped bool
+	err     error
+	relPath string
+}
+
+func (idx *Indexer) prepareBatchWork(fi FileInfo, existing db.Document) (batchWork, bool, error) {
+	content, err := ReadFileContent(fi.FullPath, idx.cfg.MaxFileSize)
+	if err != nil {
+		return batchWork{}, false, fmt.Errorf("read %s: %w", fi.RelPath, err)
+	}
+	if content == "" {
+		return batchWork{}, true, nil
+	}
+
+	hash := fastHash(content)
+	if existing.Path != "" && existing.Hash == hash {
+		return batchWork{}, true, nil
+	}
+
+	lang := DetectLanguage(fi.RelPath)
+	langChunker := chunker.ForLanguage(lang)
+	var chunks []chunker.Chunk
+	if langChunker != nil {
+		chunks = langChunker(content)
+	}
+	if len(chunks) == 0 {
+		return batchWork{}, true, nil
+	}
+
+	return batchWork{
+		relPath:  fi.RelPath,
+		fullPath: fi.FullPath,
+		content:  content,
+		hash:     hash,
+		chunks:   chunks,
+		refs:     ExtractReferences(content),
+		lang:     lang,
+		size:     fi.Size,
+		modTime:  fi.ModTime,
+	}, false, nil
 }
 
 func (idx *Indexer) writeBatch(
@@ -442,8 +475,7 @@ func (idx *Indexer) writeBatch(
 			}
 		}
 
-		refs := ExtractReferences(w.content)
-		for _, r := range refs {
+		for _, r := range w.refs {
 			if _, err := qtx.CreateRef(ctx, db.CreateRefParams{
 				DocID:   docID,
 				Name:    r.Name,
