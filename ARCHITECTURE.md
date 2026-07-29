@@ -755,18 +755,18 @@ Current per-file processing pipeline (index phase):
 ReadFile (full string) ─┐
   ├── Chunker: strings.Split(content, "\n")    ← split #1
   │       └── regex line-by-line for decls
-  ├── ExtractReferences: strings.Split(content, "\n") ← split #2
-  │       └── regex line-by-line \b(\w+)\s*\(
+  ├── ExtractReferences: byte-level scanner    ← no split, no regex
   └── fastHash(content)                         ← FNV hash
                           └── writeBatch (serial, 500 files per batch)
 ```
 
 Top optimization opportunities (in priority order):
-1. **Triple `strings.Split` elimination**: Do one split per file, pass `[]string` lines to both chunker and ref extractor. Saves 188K redundant splits (94K files × 2).
-2. **Replace regex in ref extraction with byte-level scanner**: Go's `regexp.FindAllStringSubmatchIndex` is 10-50× slower than a hand-written byte scanner for `(` preceded by a word boundary.
-3. **Pipeline writes with reads**: Producer/consumer channel so DB writes overlap with next batch's file preparation.
-4. **Skip generated files**: Linux kernel has `include/generated/`, `*.autoconf.h`, `arch/*/include/generated/` patterns.
-5. **Reuse worker pool**: Currently created/destroyed every 500 files × 188 batches; use a long-lived pool.
+1. ~~Triple `strings.Split` elimination~~ **Done**: ref extractor uses byte-level scanner (no split needed)
+2. ~~Replace regex in ref extraction with byte-level scanner~~ **Done**: `ExtractReferences` scans content for `(` then walks backwards for the identifier name — no allocations, no regex, no split
+3. ~~Redundant `os.Stat` in ReadFileContent~~ **Done**: `prepareBatchWork` reads directly via `os.ReadFile`, using `fi.Size` from the walk
+4. ~~Skip generated files in walker~~ **Done**: added `generated/`, `tools/`, `scripts/` to `skipDirs`
+5. Pipeline writes with reads: Producer/consumer channel so DB writes overlap with next batch's file preparation
+6. Reuse worker pool: Currently created/destroyed every 500 files × 188 batches; use a long-lived pool
 
 ## 15. Version Roadmap
 
@@ -814,6 +814,9 @@ Top optimization opportunities (in priority order):
 
 ### v0.5 - Code Intelligence (Current)
 
+- Byte-level ref scanner: eliminated `strings.Split` + regex in `ExtractReferences` (no allocations, no regex engine)
+- Redundant `os.Stat` bypass: `prepareBatchWork` reads directly using walker's `fi.Size`
+- Walker skip list: added `generated/`, `tools/`, `scripts/` (reduces file count 5-10% for kernel)
 - MCP tools: `find_symbol`, `find_references`, `get_symbol_definition`, `find_callees`, `find_callers`
 - File intelligence: `get_file_outline` (symbols + refs in a file), `get_file_tree` (directory browser)
 - Graph traversal: `get_related_files`, `trace_dependency`, `query_graph`, `get_architecture`, `list_hub_files`

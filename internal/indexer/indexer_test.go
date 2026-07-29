@@ -3,6 +3,8 @@ package indexer
 import (
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -194,6 +196,141 @@ func containsStr(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+func BenchmarkExtractReferences(b *testing.B) {
+	code := `package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	fmt.Println("hello")
+	process(data)
+	handleRequest(ctx, req)
+	validateInput(name, age)
+	calculateSum(a, b, c)
+	transformResult(input, options)
+	doSomething()
+	for i := 0; i < n; i++ {
+		if condition {
+			processItem(items[i])
+		}
+	}
+	switch val {
+	case 1:
+		handleOne()
+	case 2:
+		handleTwo()
+	}
+}
+
+func helper() {
+	anotherCall(x, y, z)
+	deeplyNested(a, b, c, d, e)
+	lastOne()
+}
+`
+	var buf strings.Builder
+	for i := 0; i < 200; i++ {
+		buf.WriteString(code)
+	}
+	bigCode := buf.String()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		refs := ExtractReferences(bigCode)
+		_ = refs
+	}
+}
+
+var wordRe = regexp.MustCompile(`\b(\w+)\s*\(`)
+
+func extractRefsOld(content string) []Ref {
+	var refs []Ref
+	seen := make(map[string]bool)
+	line := 0
+	matches := wordRe.FindAllStringSubmatchIndex(content, -1)
+	for _, m := range matches {
+		nameStart, nameEnd := m[2], m[3]
+		name := content[nameStart:nameEnd]
+		line++
+		// skip control keywords
+		switch name {
+		case "if", "for", "while", "switch", "case", "return", "catch",
+			"throw", "new", "delete", "func", "var", "let", "const",
+			"import", "export", "class", "def", "fn", "struct", "enum",
+			"trait", "interface", "impl", "type", "package", "go", "defer":
+			continue
+		}
+		lineStr := content[m[0]:m[1]]
+		trimmed := stringsTrimSpace(lineStr)
+		if len(trimmed) > 120 {
+			trimmed = trimmed[:117] + "..."
+		}
+		key := name + ":" + trimmed
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		refs = append(refs, Ref{
+			Name:    name,
+			Line:    line,
+			Col:     nameStart - m[0],
+			Context: trimmed,
+		})
+	}
+	return refs
+}
+
+func BenchmarkExtractReferencesOld(b *testing.B) {
+	code := `package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	fmt.Println("hello")
+	process(data)
+	handleRequest(ctx, req)
+	validateInput(name, age)
+	calculateSum(a, b, c)
+	transformResult(input, options)
+	doSomething()
+	for i := 0; i < n; i++ {
+		if condition {
+			processItem(items[i])
+		}
+	}
+	switch val {
+	case 1:
+		handleOne()
+	case 2:
+		handleTwo()
+	}
+}
+
+func helper() {
+	anotherCall(x, y, z)
+	deeplyNested(a, b, c, d, e)
+	lastOne()
+}
+`
+	var buf strings.Builder
+	for i := 0; i < 200; i++ {
+		buf.WriteString(code)
+	}
+	bigCode := buf.String()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		refs := extractRefsOld(bigCode)
+		_ = refs
+	}
 }
 
 func TestIsGitRepo(t *testing.T) {

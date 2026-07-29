@@ -76,12 +76,32 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repoPath string, repoID int64
 	result := IndexResult{}
 
 	batchSize := 500
-	for i := 0; i < len(files); i += batchSize {
-		end := i + batchSize
+
+	type batchWorkList struct {
+		work []batchWork
+	}
+	writeCh := make(chan batchWorkList, 1)
+	var writeErr error
+	var writeWg sync.WaitGroup
+	writeWg.Add(1)
+	go func() {
+		defer writeWg.Done()
+		for bwl := range writeCh {
+			if writeErr != nil {
+				continue
+			}
+			if err := idx.writeBatch(ctx, repoID, bwl.work, existingByPath); err != nil {
+				writeErr = err
+			}
+		}
+	}()
+
+	for offset := 0; offset < len(files); offset += batchSize {
+		end := offset + batchSize
 		if end > len(files) {
 			end = len(files)
 		}
-		batch := files[i:end]
+		batch := files[offset:end]
 
 		var work []batchWork
 		jobs := make(chan batchJob, len(batch))
@@ -91,7 +111,7 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repoPath string, repoID int64
 			workers = 1
 		}
 		var wg sync.WaitGroup
-		for i := 0; i < workers; i++ {
+		for w := 0; w < workers; w++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -132,9 +152,13 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repoPath string, repoID int64
 			continue
 		}
 
-		if err := idx.writeBatch(ctx, repoID, work, existingByPath); err != nil {
-			return result, fmt.Errorf("write batch: %w", err)
-		}
+		writeCh <- batchWorkList{work: work}
+	}
+
+	close(writeCh)
+	writeWg.Wait()
+	if writeErr != nil {
+		return result, fmt.Errorf("write batch: %w", writeErr)
 	}
 
 	var toDelete []int64
@@ -373,11 +397,12 @@ func (idx *Indexer) prepareBatchWork(fi FileInfo, existing db.Document) (batchWo
 		return batchWork{}, true, nil
 	}
 
-	content, err := ReadFileContent(fi.FullPath, idx.cfg.MaxFileSize)
+	data, err := os.ReadFile(fi.FullPath)
 	if err != nil {
 		return batchWork{}, false, fmt.Errorf("read %s: %w", fi.RelPath, err)
 	}
-	if content == "" {
+	content := string(data)
+	if content == "" || int64(len(data)) > idx.cfg.MaxFileSize {
 		return batchWork{}, true, nil
 	}
 

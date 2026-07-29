@@ -33,6 +33,9 @@ var skipDirs = map[string]bool{
 	"coverage":     true,
 	".next":        true,
 	".nuxt":        true,
+	"generated":    true,
+	"tools":        true,
+	"scripts":      true,
 }
 
 var binaryExts = map[string]bool{
