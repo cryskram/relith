@@ -3,12 +3,12 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
-	"text/tabwriter"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cryskram/relith/internal/db"
+	"github.com/cryskram/relith/internal/tui"
 )
 
 var statusCmd = &cobra.Command{
@@ -29,23 +29,35 @@ var statusCmd = &cobra.Command{
 			return fmt.Errorf("list repos: %w", err)
 		}
 
-		fmt.Printf("Data directory: %s\n", app.cfg.Core.DataDir)
-		fmt.Printf("Repositories:   %d\n\n", len(repos))
+		fmt.Printf("\n%s  %s\n",
+			tui.TitleStyle.Render("Status"),
+			tui.MutedStyle.Render(fmt.Sprintf("(%d repos)", len(repos))))
+		fmt.Printf("  %s %s\n",
+			tui.MutedStyle.Render("Data:"),
+			tui.InfoStyle.Render(app.cfg.Core.DataDir))
 
 		if len(repos) == 0 {
-			fmt.Println("No repositories configured. Use 'relith repo add <path>' to add one.")
+			fmt.Println("  No repositories configured. Use 'relith repo add <path>' to add one.")
 			return nil
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-		fmt.Fprintln(w, "ID\tName\tStatus\tFiles\tChunks\tLast Indexed")
-		fmt.Fprintln(w, "--\t----\t------\t-----\t------\t------------")
+		fmt.Println()
 
 		var totalFiles, totalChunks int64
 		for _, r := range repos {
 			lastIndexed := "-"
 			if r.LastIndexedAt.Valid {
-				lastIndexed = r.LastIndexedAt.Time.Format("2006-01-02 15:04")
+				lastIndexed = r.LastIndexedAt.Time.Format("01-02 15:04")
+			}
+
+			statusIcon := tui.MutedStyle.Render("○")
+			switch r.Status {
+			case "ready":
+				statusIcon = tui.SuccessStyle.Render("✓")
+			case "indexing":
+				statusIcon = tui.HighlightStyle.Render("◐")
+			case "pending":
+				statusIcon = tui.MutedStyle.Render("○")
 			}
 
 			var chunkCount int64
@@ -58,13 +70,24 @@ var statusCmd = &cobra.Command{
 				}
 			}
 
-			fmt.Fprintf(w, "%d\t%s\t%s\t%d\t%d\t%s\n", r.ID, r.Name, r.Status, r.FileCount, chunkCount, lastIndexed)
+			path := r.Path
+			if len(path) > 50 {
+				path = "..." + path[len(path)-47:]
+			}
+
+			fmt.Printf("  %s %s\n", statusIcon, tui.TitleStyle.Render(r.Name))
+			fmt.Printf("    %s  %s  %s\n",
+				tui.MutedStyle.Render(path),
+				tui.InfoStyle.Render(fmt.Sprintf("%d files, %d chunks", r.FileCount, chunkCount)),
+				tui.MutedStyle.Render(lastIndexed))
+
 			totalFiles += r.FileCount
 			totalChunks += chunkCount
 		}
-		w.Flush()
 
-		fmt.Printf("\nTotals: %d files, %d chunks across %d repositories\n", totalFiles, totalChunks, len(repos))
+		fmt.Printf("\n  %s %s\n",
+			tui.SubtitleStyle.Render("Totals:"),
+			tui.InfoStyle.Render(fmt.Sprintf("%d files, %d chunks across %d repositories", totalFiles, totalChunks, len(repos))))
 
 		stats, err := q.GetStats(context.Background())
 		if err == nil {
@@ -74,10 +97,15 @@ var statusCmd = &cobra.Command{
 				rawMB := float64(rawBytes) / (1024 * 1024)
 				chunkMB := float64(chunkBytes) / (1024 * 1024)
 				savings := (1 - float64(chunkBytes)/float64(rawBytes)) * 100
-				fmt.Printf("\n  %d files (%.1f MB raw) → %d chunks (%.1f MB stored)  -  %.1f%% less context than full-file reads\n",
-					stats.DocCount, rawMB, stats.ChunkCount, chunkMB, savings)
+				sep := strings.Repeat("─", 40)
+				fmt.Println(tui.MutedStyle.Render(sep))
+				fmt.Printf("  %s → %s  %s\n",
+					tui.InfoStyle.Render(fmt.Sprintf("%d files (%.1f MB)", stats.DocCount, rawMB)),
+					tui.InfoStyle.Render(fmt.Sprintf("%d chunks (%.1f MB)", stats.ChunkCount, chunkMB)),
+					tui.SuccessStyle.Render(fmt.Sprintf("%.1f%% less", savings)))
 			}
 		}
+		fmt.Println()
 		return nil
 	},
 }

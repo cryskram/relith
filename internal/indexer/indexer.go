@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rs/zerolog"
+	"log/slog"
 
 	"github.com/cryskram/relith/internal/chunker"
 	"github.com/cryskram/relith/internal/config"
@@ -25,18 +25,52 @@ type IndexResult struct {
 	Elapsed      time.Duration
 }
 
-type Indexer struct {
-	db     *sql.DB
-	logger zerolog.Logger
-	cfg    config.IndexerConfig
+type ProgressEvent struct {
+	Phase        string
+	FilesFound   int
+	FilesIndexed int
+	FilesSkipped int
+	FilesError   int
+	TotalChunks  int
+	Elapsed      time.Duration
+	Error        error
 }
 
-func New(database *sql.DB, logger zerolog.Logger, cfg config.IndexerConfig) *Indexer {
+type ProgressFunc func(ProgressEvent)
+
+type Indexer struct {
+	db         *sql.DB
+	logger     *slog.Logger
+	cfg        config.IndexerConfig
+	onProgress ProgressFunc
+}
+
+func New(database *sql.DB, logger *slog.Logger, cfg config.IndexerConfig) *Indexer {
 	return &Indexer{
 		db:     database,
 		logger: logger,
 		cfg:    cfg,
 	}
+}
+
+func (idx *Indexer) OnProgress(fn ProgressFunc) {
+	idx.onProgress = fn
+}
+
+func (idx *Indexer) reportProgress(phase string, filesFound int, start time.Time, result IndexResult, err error) {
+	if idx.onProgress == nil {
+		return
+	}
+	idx.onProgress(ProgressEvent{
+		Phase:        phase,
+		FilesFound:   filesFound,
+		FilesIndexed: result.FilesIndexed,
+		FilesSkipped: result.FilesSkipped,
+		FilesError:   result.FilesError,
+		TotalChunks:  result.TotalChunks,
+		Elapsed:      time.Since(start),
+		Error:        err,
+	})
 }
 
 func (idx *Indexer) queries() *db.Queries {
@@ -45,7 +79,7 @@ func (idx *Indexer) queries() *db.Queries {
 
 func (idx *Indexer) IndexRepo(ctx context.Context, repoPath string, repoID int64) (IndexResult, error) {
 	start := time.Now()
-	idx.logger.Info().Str("path", repoPath).Int64("repo_id", repoID).Msg("indexing repo")
+	idx.logger.Info("indexing repo", "path", repoPath, "repo_id", repoID)
 
 	q := idx.queries()
 	if err := q.UpdateRepoStatus(ctx, db.UpdateRepoStatusParams{
@@ -60,7 +94,8 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repoPath string, repoID int64
 		return IndexResult{}, fmt.Errorf("walk repo: %w", err)
 	}
 
-	idx.logger.Info().Int("files_found", len(files)).Msg("walk complete")
+	idx.logger.Info("walk complete", "files_found", len(files))
+	idx.reportProgress("walk", len(files), start, IndexResult{}, nil)
 
 	existingDocs, err := q.ListDocuments(ctx, repoID)
 	if err != nil {
@@ -135,7 +170,7 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repoPath string, repoID int64
 
 		for res := range resultsCh {
 			if res.err != nil {
-				idx.logger.Error().Err(res.err).Str("file", res.relPath).Msg("prepare file")
+				idx.logger.Error("prepare file", "err", res.err, "file", res.relPath)
 				result.FilesError++
 				continue
 			}
@@ -153,6 +188,7 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repoPath string, repoID int64
 		}
 
 		writeCh <- batchWorkList{work: work}
+		idx.reportProgress("index", len(files), start, result, nil)
 	}
 
 	close(writeCh)
@@ -169,13 +205,14 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repoPath string, repoID int64
 	}
 	if len(toDelete) > 0 {
 		if err := DeleteDocuments(ctx, idx.db, repoID, toDelete); err != nil {
-			idx.logger.Error().Err(err).Int("stale_count", len(toDelete)).Msg("delete stale documents")
+			idx.logger.Error("delete stale documents", "err", err, "stale_count", len(toDelete))
 		}
 	}
 
 	now := time.Now()
+	idx.reportProgress("graph", len(files), start, IndexResult{}, nil)
 	if err := idx.BuildGraphForRepo(ctx, repoID, repoPath); err != nil {
-		idx.logger.Warn().Err(err).Msg("graph build failed (non-fatal)")
+		idx.logger.Warn("graph build failed (non-fatal)", "err", err)
 	}
 
 	if err := q.UpdateRepoStatus(ctx, db.UpdateRepoStatusParams{
@@ -188,20 +225,21 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repoPath string, repoID int64
 	}
 
 	result.Elapsed = time.Since(start)
-	idx.logger.Info().
-		Int("indexed", result.FilesIndexed).
-		Int("skipped", result.FilesSkipped).
-		Int("errors", result.FilesError).
-		Int("chunks", result.TotalChunks).
-		Int("stale_removed", len(toDelete)).
-		Dur("elapsed", result.Elapsed).
-		Msg("indexing complete")
+	idx.logger.Info("indexing complete",
+		"indexed", result.FilesIndexed,
+		"skipped", result.FilesSkipped,
+		"errors", result.FilesError,
+		"chunks", result.TotalChunks,
+		"stale_removed", len(toDelete),
+		"elapsed", result.Elapsed,
+	)
+	idx.reportProgress("complete", len(files), start, result, nil)
 
 	return result, nil
 }
 
 func (idx *Indexer) IndexFile(ctx context.Context, repoID int64, relPath, fullPath string) error {
-	idx.logger.Debug().Str("path", relPath).Int64("repo_id", repoID).Msg("index file")
+	idx.logger.Debug("index file", "path", relPath, "repo_id", repoID)
 
 	q := idx.queries()
 	existing, err := q.GetDocumentByPath(ctx, db.GetDocumentByPathParams{
@@ -213,7 +251,7 @@ func (idx *Indexer) IndexFile(ctx context.Context, repoID int64, relPath, fullPa
 	var existingPtr *db.Document
 	if exists {
 		if existing.Hash == fastHashFile(fullPath) {
-			idx.logger.Debug().Str("path", relPath).Msg("file unchanged, skipping")
+			idx.logger.Debug("file unchanged, skipping", "path", relPath)
 			return nil
 		}
 		existingPtr = &existing
@@ -228,7 +266,6 @@ func (idx *Indexer) IndexFile(ctx context.Context, repoID int64, relPath, fullPa
 	if skipped {
 		return nil
 	}
-	content := prep.content
 	hash := prep.hash
 	lang := prep.lang
 	chunks := prep.chunks
@@ -252,7 +289,7 @@ func (idx *Indexer) IndexFile(ctx context.Context, repoID int64, relPath, fullPa
 	if existingPtr != nil {
 		if err := qtx.UpdateDocument(ctx, db.UpdateDocumentParams{
 			ID:       existingPtr.ID,
-			Size:     int64(len(content)),
+			Size:     prep.size,
 			Hash:     hash,
 			ModTime:  time.Now(),
 			MimeType: sql.NullString{String: mimeStr, Valid: mimeStr != ""},
@@ -274,7 +311,7 @@ func (idx *Indexer) IndexFile(ctx context.Context, repoID int64, relPath, fullPa
 		doc, err := qtx.CreateDocument(ctx, db.CreateDocumentParams{
 			RepoID:   repoID,
 			Path:     relPath,
-			Size:     int64(len(content)),
+			Size:     prep.size,
 			Hash:     hash,
 			ModTime:  time.Now(),
 			MimeType: sql.NullString{String: mimeStr, Valid: mimeStr != ""},
@@ -322,14 +359,14 @@ func (idx *Indexer) IndexFile(ctx context.Context, repoID int64, relPath, fullPa
 	repoPath := strings.TrimSuffix(fullPath, relPath)
 	repoPath = strings.TrimSuffix(repoPath, "/")
 	if err := idx.updateGraphForFile(ctx, repoID, repoPath, relPath, docID); err != nil {
-		idx.logger.Warn().Err(err).Str("path", relPath).Msg("graph update failed (non-fatal)")
+		idx.logger.Warn("graph update failed (non-fatal)", "err", err, "path", relPath)
 	}
 
 	return tx.Commit()
 }
 
 func (idx *Indexer) DeleteFile(ctx context.Context, repoID int64, relPath string) error {
-	idx.logger.Debug().Str("path", relPath).Int64("repo_id", repoID).Msg("delete file")
+	idx.logger.Debug("delete file", "path", relPath, "repo_id", repoID)
 
 	q := idx.queries()
 	doc, err := q.GetDocumentByPath(ctx, db.GetDocumentByPathParams{
@@ -371,7 +408,6 @@ func fastHashFile(path string) string {
 type batchWork struct {
 	relPath  string
 	fullPath string
-	content  string
 	hash     string
 	chunks   []chunker.Chunk
 	refs     []Ref
@@ -429,7 +465,6 @@ func (idx *Indexer) prepareBatchWork(fi FileInfo, existing db.Document) (batchWo
 	return batchWork{
 		relPath:  fi.RelPath,
 		fullPath: fi.FullPath,
-		content:  content,
 		hash:     hash,
 		chunks:   chunks,
 		refs:     refs,

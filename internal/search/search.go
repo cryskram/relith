@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/rs/zerolog"
+	"log/slog"
 
 	"github.com/cryskram/relith/internal/config"
 )
@@ -23,11 +23,11 @@ type Result struct {
 
 type Searcher struct {
 	db     *sql.DB
-	logger zerolog.Logger
+	logger *slog.Logger
 	cfg    config.SearchConfig
 }
 
-func New(database *sql.DB, logger zerolog.Logger, cfg config.SearchConfig) *Searcher {
+func New(database *sql.DB, logger *slog.Logger, cfg config.SearchConfig) *Searcher {
 	return &Searcher{
 		db:     database,
 		logger: logger,
@@ -67,7 +67,7 @@ func (s *Searcher) Search(ctx context.Context, query string, limit int) ([]Resul
 		ORDER BY %s
 		LIMIT ?`, orderClause)
 
-	s.logger.Debug().Str("match_query", matchQuery).Int("limit", limit).Msg("search")
+	s.logger.Debug("search", "match_query", matchQuery, "limit", limit)
 
 	var rows *sql.Rows
 	var err error

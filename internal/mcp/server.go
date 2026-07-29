@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rs/zerolog"
+	"log/slog"
 
 	"github.com/cryskram/relith/internal/cli"
 	"github.com/cryskram/relith/internal/config"
@@ -24,7 +24,7 @@ type ToolHandler func(ctx context.Context, params map[string]any) CallToolResult
 type ResourceHandler func(ctx context.Context, uri string) []ResourceContents
 
 type Server struct {
-	logger      zerolog.Logger
+	logger      *slog.Logger
 	db          *sql.DB
 	queries     *db.Queries
 	searcher    *search.Searcher
@@ -36,7 +36,7 @@ type Server struct {
 	initialized bool
 }
 
-func NewServer(database *sql.DB, log zerolog.Logger) *Server {
+func NewServer(database *sql.DB, log *slog.Logger) *Server {
 	cfg := &config.Config{
 		Indexer: config.IndexerConfig{
 			Concurrency: 4,
@@ -90,7 +90,7 @@ func (s *Server) registerResources() {
 }
 
 func (s *Server) Run(ctx context.Context) error {
-	s.logger.Info().Msg("MCP server starting (stdio)")
+	s.logger.Info("MCP server starting (stdio)")
 	scanner := bufio.NewScanner(s.reader)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 
@@ -102,7 +102,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 		var req JSONRPCRequest
 		if err := json.Unmarshal([]byte(line), &req); err != nil {
-			s.logger.Error().Err(err).Str("raw", line).Msg("parse error")
+			s.logger.Error("parse error", "err", err, "raw", line)
 			continue
 		}
 
@@ -152,7 +152,7 @@ func (s *Server) handleInitialize(ctx context.Context, req JSONRPCRequest) {
 		return
 	}
 
-	s.logger.Info().Str("client", initReq.ClientInfo.Name).Str("version", initReq.ClientInfo.Version).Msg("client initialized")
+	s.logger.Info("client initialized", "client", initReq.ClientInfo.Name, "version", initReq.ClientInfo.Version)
 
 	s.writeJSON(req.ID, JSONRPCResponse{
 		JSONRPC: "2.0", ID: req.ID,
@@ -481,12 +481,12 @@ func (s *Server) handleResourcesRead(ctx context.Context, req JSONRPCRequest) {
 func (s *Server) writeJSON(id json.RawMessage, resp JSONRPCResponse) {
 	data, err := json.Marshal(resp)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("failed to marshal response")
+		s.logger.Error("failed to marshal response", "err", err)
 		return
 	}
 	data = append(data, '\n')
 	if _, err := s.writer.Write(data); err != nil {
-		s.logger.Error().Err(err).Msg("failed to write response")
+		s.logger.Error("failed to write response", "err", err)
 	}
 }
 

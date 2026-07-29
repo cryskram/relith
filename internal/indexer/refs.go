@@ -1,5 +1,7 @@
 package indexer
 
+import "strings"
+
 var skipWords = map[string]bool{
 	"if": true, "for": true, "while": true, "switch": true,
 	"catch": true, "case": true, "return": true, "throw": true,
@@ -113,11 +115,12 @@ func ExtractReferences(content string) []Ref {
 			col = 0
 		}
 
+		contextStr := strings.Clone(trimmed)
 		refs = append(refs, Ref{
 			Name:    name,
 			Line:    line,
 			Col:     col,
-			Context: trimmed,
+			Context: contextStr,
 		})
 	}
 

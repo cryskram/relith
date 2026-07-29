@@ -4,12 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/rs/zerolog"
 
 	"github.com/cryskram/relith/internal/config"
 	"github.com/cryskram/relith/internal/db"
@@ -21,11 +20,11 @@ import (
 type Server struct {
 	http   *http.Server
 	listen net.Listener
-	logger zerolog.Logger
+	logger *slog.Logger
 	cfg    config.DaemonConfig
 }
 
-func New(database *sql.DB, logger zerolog.Logger, cfg *config.Config) *Server {
+func New(database *sql.DB, logger *slog.Logger, cfg *config.Config) *Server {
 	searcher := search.New(database, logger, cfg.Search)
 	h := &handlers{
 		queries:  db.New(database),
@@ -49,14 +48,15 @@ func New(database *sql.DB, logger zerolog.Logger, cfg *config.Config) *Server {
 	mux.HandleFunc("GET /v1/content", h.content)
 
 	httpSrv := &http.Server{
-		Handler:     withLogging(mux, logger),
+		Handler:     mux,
 		ReadTimeout: 10 * time.Second,
 		IdleTimeout: 60 * time.Second,
 	}
 
+	discard := slog.New(slog.DiscardHandler)
 	return &Server{
 		http:   httpSrv,
-		logger: logger.With().Str("component", "api").Logger(),
+		logger: discard,
 		cfg:    cfg.Daemon,
 	}
 }
@@ -79,7 +79,6 @@ func (s *Server) Start() error {
 			return fmt.Errorf("socket chmod: %w", err)
 		}
 		s.listen = listener
-		s.logger.Info().Str("socket", socketPath).Msg("listening on unix socket")
 	} else {
 		addr := fmt.Sprintf("%s:%d", s.cfg.TCPHost, s.cfg.TCPPort)
 		listener, err := net.Listen("tcp", addr)
@@ -87,12 +86,11 @@ func (s *Server) Start() error {
 			return fmt.Errorf("tcp listen: %w", err)
 		}
 		s.listen = listener
-		s.logger.Info().Str("addr", addr).Msg("listening on tcp")
 	}
 
 	go func() {
 		if err := s.http.Serve(s.listen); err != nil && err != http.ErrServerClosed {
-			s.logger.Error().Err(err).Msg("server error")
+			s.logger.Error("server error", "err", err)
 		}
 	}()
 
@@ -111,30 +109,5 @@ func (s *Server) Stop(ctx context.Context) error {
 		os.Remove(s.cfg.Socket)
 	}
 
-	s.logger.Info().Msg("server stopped")
 	return nil
-}
-
-type responseWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (rw *responseWriter) WriteHeader(code int) {
-	rw.status = code
-	rw.ResponseWriter.WriteHeader(code)
-}
-
-func withLogging(next http.Handler, logger zerolog.Logger) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
-		next.ServeHTTP(rw, r)
-		logger.Debug().
-			Str("method", r.Method).
-			Str("path", r.URL.Path).
-			Int("status", rw.status).
-			Dur("duration", time.Since(start)).
-			Msg("request")
-	})
 }

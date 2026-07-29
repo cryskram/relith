@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
+	"os"
 
 	"github.com/cryskram/relith/internal/app"
 	"github.com/cryskram/relith/internal/config"
 	"github.com/cryskram/relith/internal/daemon"
-	"github.com/cryskram/relith/internal/logger"
 )
 
 func main() {
@@ -16,11 +17,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	zl := logger.New(cfg.Log)
-	application := &app.App{Config: cfg, Logger: zl}
+	slogLogger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	application := &app.App{Config: cfg, Logger: slogLogger}
 
 	d := daemon.New(application)
 	if err := d.Run(context.Background()); err != nil {
-		zl.Fatal().Err(err).Msg("daemon exited with error")
+		slogLogger.Error("daemon exited with error", "err", err)
+		os.Exit(1)
 	}
 }

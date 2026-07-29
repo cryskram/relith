@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/rs/zerolog"
+	"log/slog"
 
 	"github.com/cryskram/relith/internal/db"
 	"github.com/cryskram/relith/internal/search"
@@ -31,7 +31,7 @@ type Engine struct {
 	db      *sql.DB
 	queries *db.Queries
 	search  *search.Searcher
-	log     zerolog.Logger
+	log     *slog.Logger
 }
 
 type TraceRequest struct {
@@ -100,7 +100,7 @@ type docCandidate struct {
 	Reasons []string
 }
 
-func New(database *sql.DB, logger zerolog.Logger, searcher *search.Searcher) *Engine {
+func New(database *sql.DB, logger *slog.Logger, searcher *search.Searcher) *Engine {
 	return &Engine{db: database, queries: db.New(database), search: searcher, log: logger}
 }
 

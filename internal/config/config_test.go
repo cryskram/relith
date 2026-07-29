@@ -23,19 +23,14 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Indexer.Concurrency != 4 {
 		t.Errorf("expected concurrency 4, got %d", cfg.Indexer.Concurrency)
 	}
-	if cfg.Log.Level != "info" {
-		t.Errorf("expected log level 'info', got %q", cfg.Log.Level)
-	}
 }
 
 func TestLoadEnvOverride(t *testing.T) {
 	os.Setenv("RELITH_CORE_DATA_DIR", "/tmp/relith-test")
 	os.Setenv("RELITH_DAEMON_TCP_PORT", "9999")
-	os.Setenv("RELITH_LOG_LEVEL", "debug")
 	t.Cleanup(func() {
 		os.Unsetenv("RELITH_CORE_DATA_DIR")
 		os.Unsetenv("RELITH_DAEMON_TCP_PORT")
-		os.Unsetenv("RELITH_LOG_LEVEL")
 	})
 
 	cfg, err := Load()
@@ -47,9 +42,6 @@ func TestLoadEnvOverride(t *testing.T) {
 	}
 	if cfg.Daemon.TCPPort != 9999 {
 		t.Errorf("expected TCPPort 9999, got %d", cfg.Daemon.TCPPort)
-	}
-	if cfg.Log.Level != "debug" {
-		t.Errorf("expected log level 'debug', got %q", cfg.Log.Level)
 	}
 }
 
@@ -63,7 +55,6 @@ func TestValidate(t *testing.T) {
 			name: "valid defaults",
 			cfg: Config{
 				Core:    CoreConfig{DataDir: "/tmp/data"},
-				Log:     LogConfig{Level: "info", Format: "console"},
 				Daemon:  DaemonConfig{TCPPort: 9876},
 				MCP:     MCPConfig{TCPPort: 9877},
 				Indexer: IndexerConfig{Concurrency: 4},
@@ -74,17 +65,6 @@ func TestValidate(t *testing.T) {
 			name: "empty data dir",
 			cfg: Config{
 				Core:   CoreConfig{DataDir: ""},
-				Log:    LogConfig{Level: "info", Format: "console"},
-				Daemon: DaemonConfig{TCPPort: 9876},
-				MCP:    MCPConfig{TCPPort: 9877},
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid log level",
-			cfg: Config{
-				Core:   CoreConfig{DataDir: "/tmp/data"},
-				Log:    LogConfig{Level: "trace", Format: "console"},
 				Daemon: DaemonConfig{TCPPort: 9876},
 				MCP:    MCPConfig{TCPPort: 9877},
 			},
@@ -94,7 +74,6 @@ func TestValidate(t *testing.T) {
 			name: "invalid daemon port",
 			cfg: Config{
 				Core:   CoreConfig{DataDir: "/tmp/data"},
-				Log:    LogConfig{Level: "info", Format: "console"},
 				Daemon: DaemonConfig{TCPPort: 0},
 				MCP:    MCPConfig{TCPPort: 9877},
 			},
@@ -115,7 +94,6 @@ func TestValidate(t *testing.T) {
 func TestValidateClamps(t *testing.T) {
 	cfg := Config{
 		Core:    CoreConfig{DataDir: "/tmp/data"},
-		Log:     LogConfig{Level: "info", Format: "console"},
 		Daemon:  DaemonConfig{TCPPort: 9876},
 		MCP:     MCPConfig{TCPPort: 9877},
 		Indexer: IndexerConfig{Concurrency: 0},

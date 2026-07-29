@@ -4,11 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"os"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/cryskram/relith/internal/db"
 	"github.com/cryskram/relith/internal/indexer"
+	"github.com/cryskram/relith/internal/tui"
 )
 
 var indexCmd = &cobra.Command{
@@ -47,9 +52,12 @@ Examples:
 		}
 
 		var indexed int
-		for _, repo := range repos {
+		for i, repo := range repos {
+			if i > 0 {
+				fmt.Println()
+			}
 			if err := indexRepo(app, q, repo); err != nil {
-				app.logger.Error().Err(err).Int64("repo_id", repo.ID).Msg("index failed")
+				fmt.Fprintf(os.Stderr, "Index failed for repo %d: %v\n", repo.ID, err)
 				continue
 			}
 			indexed++
@@ -69,6 +77,10 @@ func init() {
 }
 
 func indexRepo(app *cliApp, q *db.Queries, repo db.Repository) error {
+	if term.IsTerminal(int(os.Stdout.Fd())) {
+		return indexRepoTUI(app, repo)
+	}
+
 	idx := indexer.New(app.db, app.logger, app.cfg.Indexer)
 	fmt.Printf("Indexing: %s (%s)\n", repo.Name, repo.Path)
 	result, err := idx.IndexRepo(context.Background(), repo.Path, repo.ID)
@@ -78,4 +90,30 @@ func indexRepo(app *cliApp, q *db.Queries, repo db.Repository) error {
 	fmt.Printf("  Indexed: %d files, %d chunks, %d skipped, %d errors [%s]\n",
 		result.FilesIndexed, result.TotalChunks, result.FilesSkipped, result.FilesError, result.Elapsed)
 	return nil
+}
+
+func indexRepoTUI(app *cliApp, repo db.Repository) error {
+	silentLog := slog.New(slog.DiscardHandler)
+	idx := indexer.New(app.db, silentLog, app.cfg.Indexer)
+
+	eventCh := make(chan indexer.ProgressEvent, 100)
+
+	go func() {
+		defer close(eventCh)
+		ctx := context.Background()
+		idx.OnProgress(func(evt indexer.ProgressEvent) {
+			eventCh <- evt
+		})
+		_, err := idx.IndexRepo(ctx, repo.Path, repo.ID)
+		if err != nil {
+			eventCh <- indexer.ProgressEvent{
+				Phase: "complete",
+				Error: err,
+			}
+		}
+	}()
+
+	p := tea.NewProgram(tui.NewProgress(eventCh))
+	_, err := p.Run()
+	return err
 }

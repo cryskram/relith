@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 type Daemon struct {
 	app    *app.App
 	apiSrv *api.Server
+	cancel context.CancelFunc
 }
 
 func New(app *app.App) *Daemon {
@@ -36,6 +38,10 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 	defer d.closeDB()
 
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	if err := db.Migrate(ctx, d.app.DB); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
@@ -46,14 +52,10 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 	defer d.stopAPI(ctx)
 
-	d.app.Logger.Info().Msg("daemon ready")
-
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	<-ctx.Done()
-
-	d.app.Logger.Info().Msg("shutting down")
 
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return nil
@@ -67,7 +69,7 @@ func (d *Daemon) stopAPI(ctx context.Context) {
 		defer cancel()
 		if err := d.apiSrv.Stop(shutdownCtx); err != nil {
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				d.app.Logger.Error().Err(err).Msg("stop api server")
+				slog.Error("stop api server", "err", err)
 			}
 		}
 	}
@@ -97,7 +99,7 @@ func (d *Daemon) openDB() error {
 func (d *Daemon) closeDB() {
 	if d.app.DB != nil {
 		if err := d.app.DB.Close(); err != nil {
-			d.app.Logger.Error().Err(err).Msg("close database")
+			slog.Error("close database", "err", err)
 		}
 	}
 }

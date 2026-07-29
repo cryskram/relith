@@ -15,7 +15,7 @@ import (
 )
 
 func (idx *Indexer) BuildGraphForRepo(ctx context.Context, repoID int64, repoPath string) error {
-	idx.logger.Info().Int64("repo_id", repoID).Msg("building graph edges")
+	idx.logger.Info("building graph edges", "repo_id", repoID)
 
 	q := idx.queries()
 
@@ -52,7 +52,7 @@ func (idx *Indexer) BuildGraphForRepo(ctx context.Context, repoID int64, repoPat
 
 			imports, err := idx.extractImportsForDoc(doc, repoPath, docByPath)
 			if err != nil {
-				idx.logger.Warn().Err(err).Str("path", doc.Path).Msg("extract imports")
+				idx.logger.Warn("extract imports", "err", err, "path", doc.Path)
 				continue
 			}
 			if err := storeGraphEdges(ctx, tx, repoID, doc.ID, imports); err != nil {
@@ -75,7 +75,7 @@ func (idx *Indexer) BuildGraphForRepo(ctx context.Context, repoID int64, repoPat
 		return fmt.Errorf("store ref edges: %w", err)
 	}
 
-	idx.logger.Info().Int64("repo_id", repoID).Int("docs", len(docs)).Int("ref_edges", len(refEdges)).Msg("graph build complete")
+	idx.logger.Info("graph build complete", "repo_id", repoID, "docs", len(docs), "ref_edges", len(refEdges))
 	return nil
 }
 

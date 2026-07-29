@@ -3,12 +3,11 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cryskram/relith/internal/db"
+	"github.com/cryskram/relith/internal/tui"
 )
 
 var repoListCmd = &cobra.Command{
@@ -33,17 +32,39 @@ var repoListCmd = &cobra.Command{
 			return nil
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-		fmt.Fprintln(w, "ID\tName\tPath\tStatus\tFiles\tLast Indexed")
-		fmt.Fprintln(w, "--\t----\t----\t------\t-----\t------------")
+		fmt.Printf("\n%s  %s\n\n",
+			tui.TitleStyle.Render("Repositories"),
+			tui.MutedStyle.Render(fmt.Sprintf("(%d)", len(repos))))
+
 		for _, r := range repos {
 			lastIndexed := "-"
 			if r.LastIndexedAt.Valid {
-				lastIndexed = r.LastIndexedAt.Time.Format("2006-01-02 15:04")
+				lastIndexed = r.LastIndexedAt.Time.Format("01-02 15:04")
 			}
-			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%d\t%s\n", r.ID, r.Name, r.Path, r.Status, r.FileCount, lastIndexed)
+
+			statusIcon := tui.MutedStyle.Render("○")
+			switch r.Status {
+			case "ready":
+				statusIcon = tui.SuccessStyle.Render("✓")
+			case "indexing":
+				statusIcon = tui.HighlightStyle.Render("◐")
+			case "pending":
+				statusIcon = tui.MutedStyle.Render("○")
+			}
+
+			path := r.Path
+			if len(path) > 50 {
+				path = "..." + path[len(path)-47:]
+			}
+
+			fmt.Printf("  %s %s\n", statusIcon, tui.TitleStyle.Render(r.Name))
+			fmt.Printf("    %s  %s %s  %s\n",
+				tui.MutedStyle.Render(path),
+				tui.InfoStyle.Render(fmt.Sprintf("%d files", r.FileCount)),
+				tui.MutedStyle.Render("·"),
+				tui.MutedStyle.Render(lastIndexed))
 		}
-		w.Flush()
+		fmt.Println()
 		return nil
 	},
 }

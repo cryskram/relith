@@ -11,10 +11,8 @@ import (
 )
 
 var (
-	ErrNoDataDir       = errors.New("data directory not configured")
-	ErrInvalidLogLevel = errors.New("invalid log level (valid: debug, info, warn, error, fatal)")
-	ErrInvalidLogFmt   = errors.New("invalid log format (valid: console, json)")
-	ErrInvalidPort     = errors.New("port must be between 1 and 65535")
+	ErrNoDataDir   = errors.New("data directory not configured")
+	ErrInvalidPort = errors.New("port must be between 1 and 65535")
 )
 
 type Config struct {
@@ -24,7 +22,6 @@ type Config struct {
 	Indexer IndexerConfig `mapstructure:"indexer"`
 	Watcher WatcherConfig `mapstructure:"watcher"`
 	Search  SearchConfig  `mapstructure:"search"`
-	Log     LogConfig     `mapstructure:"log"`
 }
 
 type CoreConfig struct {
@@ -58,12 +55,6 @@ type SearchConfig struct {
 	PathBoosting bool `mapstructure:"path_boosting"`
 }
 
-type LogConfig struct {
-	Level  string `mapstructure:"level"`
-	Format string `mapstructure:"format"`
-	Output string `mapstructure:"output"`
-}
-
 func setDefaults(v *viper.Viper) error {
 	dataDir, err := DefaultDataDir()
 	if err != nil {
@@ -87,26 +78,12 @@ func setDefaults(v *viper.Viper) error {
 	v.SetDefault("search.max_results", 100)
 	v.SetDefault("search.path_boosting", true)
 
-	v.SetDefault("log.level", "info")
-	v.SetDefault("log.format", "console")
-	v.SetDefault("log.output", "stderr")
-
 	return nil
 }
 
 func validate(cfg *Config) error {
 	if cfg.Core.DataDir == "" {
 		return ErrNoDataDir
-	}
-	switch cfg.Log.Level {
-	case "debug", "info", "warn", "error", "fatal":
-	default:
-		return ErrInvalidLogLevel
-	}
-	switch cfg.Log.Format {
-	case "console", "json":
-	default:
-		return ErrInvalidLogFmt
 	}
 	if cfg.Daemon.TCPPort < 1 || cfg.Daemon.TCPPort > 65535 {
 		return fmt.Errorf("daemon tcp_port: %w", ErrInvalidPort)

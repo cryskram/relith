@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/rs/zerolog"
+	"log/slog"
 
 	"github.com/cryskram/relith/internal/config"
 	"github.com/cryskram/relith/internal/indexer"
@@ -21,19 +21,19 @@ type Watcher struct {
 	indexer   *indexer.Indexer
 	repoPath  string
 	repoID    int64
-	logger    zerolog.Logger
+	logger    *slog.Logger
 	cfg       config.WatcherConfig
 
 	cancel context.CancelFunc
 	done   chan struct{}
 }
 
-func New(repoPath string, repoID int64, idx *indexer.Indexer, logger zerolog.Logger, cfg config.WatcherConfig) *Watcher {
+func New(repoPath string, repoID int64, idx *indexer.Indexer, logger *slog.Logger, cfg config.WatcherConfig) *Watcher {
 	return &Watcher{
 		repoPath: repoPath,
 		repoID:   repoID,
 		indexer:  idx,
-		logger:   logger.With().Str("component", "watcher").Str("repo", repoPath).Logger(),
+		logger:   logger.With("component", "watcher", "repo", repoPath),
 		cfg:      cfg,
 		done:     make(chan struct{}),
 	}
@@ -63,7 +63,7 @@ func (w *Watcher) Start(ctx context.Context) error {
 
 	go w.loop(ctx)
 
-	w.logger.Info().Dur("debounce", debounceInterval).Msg("watcher started")
+	w.logger.Info("watcher started", "debounce", debounceInterval)
 	return nil
 }
 
@@ -78,7 +78,7 @@ func (w *Watcher) Stop() {
 		w.fsWatcher.Close()
 	}
 	<-w.done
-	w.logger.Info().Msg("watcher stopped")
+	w.logger.Info("watcher stopped")
 }
 
 func (w *Watcher) loop(ctx context.Context) {
@@ -96,7 +96,7 @@ func (w *Watcher) loop(ctx context.Context) {
 			if !ok {
 				return
 			}
-			w.logger.Error().Err(err).Msg("watcher error")
+			w.logger.Error("watcher error", "err", err)
 
 		case <-ctx.Done():
 			return
@@ -135,23 +135,23 @@ func (w *Watcher) handleChanges(paths []string) {
 
 		info, err := os.Stat(fullPath)
 		if os.IsNotExist(err) {
-			w.logger.Debug().Str("path", relPath).Msg("file removed")
+			w.logger.Debug("file removed", "path", relPath)
 			if err := w.indexer.DeleteFile(ctx, w.repoID, relPath); err != nil {
-				w.logger.Error().Err(err).Str("path", relPath).Msg("delete failed")
+				w.logger.Error("delete failed", "err", err, "path", relPath)
 			}
 			continue
 		}
 		if err != nil {
-			w.logger.Error().Err(err).Str("path", relPath).Msg("stat failed")
+			w.logger.Error("stat failed", "err", err, "path", relPath)
 			continue
 		}
 		if info.IsDir() {
 			continue
 		}
 
-		w.logger.Debug().Str("path", relPath).Int64("size", info.Size()).Msg("file changed")
+		w.logger.Debug("file changed", "path", relPath, "size", info.Size())
 		if err := w.indexer.IndexFile(ctx, w.repoID, relPath, fullPath); err != nil {
-			w.logger.Error().Err(err).Str("path", relPath).Msg("index failed")
+			w.logger.Error("index failed", "err", err, "path", relPath)
 		}
 	}
 }
@@ -170,7 +170,7 @@ func (w *Watcher) addTree(root string) error {
 				return filepath.SkipDir
 			}
 			if err := w.fsWatcher.Add(path); err != nil {
-				w.logger.Warn().Err(err).Str("path", path).Msg("watch add dir failed")
+				w.logger.Warn("watch add dir failed", "err", err, "path", path)
 			}
 		}
 		return nil

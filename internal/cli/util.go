@@ -4,18 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/cryskram/relith/internal/config"
 	"github.com/cryskram/relith/internal/db"
-	"github.com/cryskram/relith/internal/logger"
-	"github.com/rs/zerolog"
 )
 
 type cliApp struct {
 	cfg    *config.Config
-	logger zerolog.Logger
+	logger *slog.Logger
 	db     *sql.DB
 }
 
@@ -24,8 +23,6 @@ func openDB() (*cliApp, error) {
 	if err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
-
-	zl := logger.New(cfg.Log)
 
 	if err := os.MkdirAll(cfg.Core.DataDir, 0755); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
@@ -42,7 +39,8 @@ func openDB() (*cliApp, error) {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
-	return &cliApp{cfg: cfg, logger: zl, db: database}, nil
+	discard := slog.New(slog.DiscardHandler)
+	return &cliApp{cfg: cfg, logger: discard, db: database}, nil
 }
 
 func (a *cliApp) close() {

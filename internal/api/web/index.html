@@ -51,6 +51,10 @@
         <span id="repo-count" class="text-xs text-gray-600"></span>
       </div>
       <div id="repo-list" class="space-y-2"></div>
+      <div id="repo-loading" class="text-center py-8 text-gray-600 text-sm">
+        <div class="inline-block w-4 h-4 border-2 border-gray-600 border-t-relith rounded-full animate-spin mr-2 align-middle"></div>
+        Loading repositories...
+      </div>
       <div id="repo-empty" class="hidden text-center py-16 text-gray-600">
         <p class="text-base mb-2">No repositories tracked</p>
         <p class="text-sm">Add one with <code class="text-relith bg-gray-900 px-1.5 py-0.5 rounded">relith repo add &lt;path&gt;</code> and run <code class="text-relith bg-gray-900 px-1.5 py-0.5 rounded">relith index</code></p>
@@ -107,10 +111,13 @@
           </div>
         </div>
 
-        <div id="graph-container" class="relative bg-[#0b1020] border border-gray-800 rounded-2xl overflow-hidden shadow-2xl shadow-black/20" style="height:78vh; min-height:760px">
+          <div id="graph-container" class="relative bg-[#0b1020] border border-gray-800 rounded-2xl overflow-hidden shadow-2xl shadow-black/20" style="height:78vh; min-height:760px">
           <svg id="graph-svg" width="100%" height="100%"></svg>
           <div id="graph-empty" class="absolute inset-0 flex items-center justify-center text-center px-6 text-gray-600 text-sm hidden bg-[#0b1020]/80">
             No cross-file references found. Index some code first.
+          </div>
+          <div id="graph-loading" class="absolute inset-0 flex items-center justify-center text-center px-6 text-gray-600 text-sm bg-[#0b1020]/80">
+            <div><div class="inline-block w-5 h-5 border-2 border-gray-600 border-t-relith rounded-full animate-spin mr-2 align-middle"></div>Loading graph...</div>
           </div>
           <div class="absolute top-4 right-4 w-[min(420px,calc(100%-2rem))] rounded-2xl border border-gray-800 bg-gray-950/85 backdrop-blur-md p-4 shadow-2xl shadow-black/40">
             <div>
@@ -268,11 +275,17 @@
 
     // --- Repos ---
     async function loadRepos() {
+      $('repo-loading').classList.remove('hidden')
       try {
         const r = await fetch(API + '/v1/repos')
-        if (!r.ok) return
-        renderRepos(await r.json())
-      } catch {}
+        if (!r.ok) throw new Error(String(r.status))
+        const repos = await r.json()
+        $('repo-loading').classList.add('hidden')
+        renderRepos(repos)
+      } catch (e) {
+        $('repo-loading').classList.add('hidden')
+        $('repo-list').innerHTML = '<div class="text-center py-8 text-gray-600 text-sm">Could not load repositories — ' + escapeHtml(e.message) + '</div>'
+      }
     }
 
     function renderRepos(repos) {
@@ -718,20 +731,22 @@
       const sel = $('graph-repo')
       const repo = sel.value
       const url = API + '/v1/graph' + (repo ? '?repo=' + encodeURIComponent(repo) : '')
+      $('graph-loading').classList.remove('hidden')
+      $('graph-empty').classList.add('hidden')
       try {
         const r = await fetch(url)
         const data = await r.json()
+        $('graph-loading').classList.add('hidden')
         if (data.error) {
           $('graph-empty').classList.remove('hidden')
           $('graph-empty').textContent = 'Error: ' + data.error
-          $('graph-container').classList.add('hidden')
           return
         }
         renderGraph(data.nodes, data.edges)
       } catch (e) {
+        $('graph-loading').classList.add('hidden')
         $('graph-empty').classList.remove('hidden')
         $('graph-empty').textContent = 'Error: ' + e.message
-        $('graph-container').classList.add('hidden')
       }
     }
 
@@ -743,6 +758,7 @@
       if (!nodes || nodes.length < 2) {
         container.classList.add('hidden')
         empty.classList.remove('hidden')
+        $('graph-loading').classList.add('hidden')
         empty.textContent = 'Not enough connections to build a graph. Index more code.'
         $('graph-stats-nodes').textContent = '0'
         $('graph-stats-edges').textContent = '0'
@@ -752,6 +768,7 @@
       }
       container.classList.remove('hidden')
       empty.classList.add('hidden')
+      $('graph-loading').classList.add('hidden')
 
       if (graphSimulation) graphSimulation.stop()
 

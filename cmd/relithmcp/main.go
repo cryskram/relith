@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/cryskram/relith/internal/config"
 	"github.com/cryskram/relith/internal/db"
-	"github.com/cryskram/relith/internal/logger"
 	"github.com/cryskram/relith/internal/mcp"
 )
 
@@ -19,23 +19,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := logger.New(cfg.Log)
+	slogLogger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	if err := os.MkdirAll(cfg.Core.DataDir, 0755); err != nil {
-		log.Fatal().Err(err).Str("dir", cfg.Core.DataDir).Msg("create data directory")
+		slogLogger.Error("create data directory", "err", err, "dir", cfg.Core.DataDir)
+		os.Exit(1)
 	}
 
 	dbPath := filepath.Join(cfg.Core.DataDir, "relith.db")
 	database, err := db.Open(dbPath)
 	if err != nil {
-		log.Fatal().Err(err).Str("path", dbPath).Msg("open database")
+		slogLogger.Error("open database", "err", err, "path", dbPath)
+		os.Exit(1)
 	}
 	defer database.Close()
 
-	server := mcp.NewServer(database, log)
+	server := mcp.NewServer(database, slogLogger)
 
 	ctx := context.Background()
 	if err := server.Run(ctx); err != nil {
-		log.Fatal().Err(err).Msg("mcp server error")
+		slogLogger.Error("mcp server error", "err", err)
+		os.Exit(1)
 	}
 }

@@ -7,10 +7,13 @@ import (
 	"os"
 	"strconv"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/cryskram/relith/internal/db"
 	"github.com/cryskram/relith/internal/indexer"
+	"github.com/cryskram/relith/internal/tui"
 )
 
 var repoRemoveCmd = &cobra.Command{
@@ -27,40 +30,64 @@ var repoRemoveCmd = &cobra.Command{
 
 		q := db.New(app.db)
 
-		arg := args[0]
-
-		// Try by ID first
-		if id, parseErr := strconv.ParseInt(arg, 10, 64); parseErr == nil {
-			repo, err := q.GetRepo(context.Background(), id)
-			if err == nil {
-				if err := indexer.DeleteRepoWithData(context.Background(), app.db, repo.ID); err != nil {
-					return fmt.Errorf("delete repo: %w", err)
-				}
-				fmt.Printf("Removed repository: id=%d  name=%s  path=%s\n", repo.ID, repo.Name, repo.Path)
-				vacuumIfNeeded(app.db)
-				return nil
-			}
-		}
-
-		// Try by name
-		repos, err := q.ListRepos(context.Background())
+		repo, err := lookupRepo(q, args[0])
 		if err != nil {
-			return fmt.Errorf("list repos: %w", err)
+			return err
 		}
 
-		for _, r := range repos {
-			if r.Name == arg {
-				if err := indexer.DeleteRepoWithData(context.Background(), app.db, r.ID); err != nil {
-					return fmt.Errorf("delete repo: %w", err)
-				}
-				fmt.Printf("Removed repository: id=%d  name=%s  path=%s\n", r.ID, r.Name, r.Path)
-				vacuumIfNeeded(app.db)
-				return nil
-			}
+		if term.IsTerminal(int(os.Stdout.Fd())) {
+			return removeRepoTUI(app, repo)
 		}
-
-		return fmt.Errorf("repository not found: %s", arg)
+		return removeRepoPlain(app, repo)
 	},
+}
+
+func lookupRepo(q *db.Queries, arg string) (db.Repository, error) {
+	ctx := context.Background()
+	if id, parseErr := strconv.ParseInt(arg, 10, 64); parseErr == nil {
+		repo, err := q.GetRepo(ctx, id)
+		if err == nil {
+			return repo, nil
+		}
+	}
+	repos, err := q.ListRepos(ctx)
+	if err != nil {
+		return db.Repository{}, fmt.Errorf("list repos: %w", err)
+	}
+	for _, r := range repos {
+		if r.Name == arg {
+			return r, nil
+		}
+	}
+	return db.Repository{}, fmt.Errorf("repository not found: %s", arg)
+}
+
+func removeRepoPlain(app *cliApp, repo db.Repository) error {
+	if err := indexer.DeleteRepoWithData(context.Background(), app.db, repo.ID); err != nil {
+		return fmt.Errorf("delete repo: %w", err)
+	}
+	fmt.Printf("Removed repository: id=%d  name=%s  path=%s\n", repo.ID, repo.Name, repo.Path)
+	vacuumIfNeeded(app.db)
+	return nil
+}
+
+func removeRepoTUI(app *cliApp, repo db.Repository) error {
+	doneCh := make(chan error, 1)
+
+	go func() {
+		doneCh <- indexer.DeleteRepoWithData(context.Background(), app.db, repo.ID)
+		close(doneCh)
+	}()
+
+	m := tui.NewSpinner(fmt.Sprintf("Removing %s (%s)...", repo.Name, repo.Path), doneCh)
+	p := tea.NewProgram(m)
+	if _, err := p.Run(); err != nil {
+		return err
+	}
+
+	fmt.Printf("Removed repository: id=%d  name=%s  path=%s\n", repo.ID, repo.Name, repo.Path)
+	vacuumIfNeeded(app.db)
+	return nil
 }
 
 func vacuumIfNeeded(database *sql.DB) {
