@@ -15,23 +15,24 @@
 
 <br>
 
-Relith is a **local-first context engine** for AI-assisted coding. It indexes your codebases and exposes them through a unified MCP interface - one index, any AI.
+Relith is a **local-first context engine** for AI-assisted coding. It indexes your codebases and exposes them through a unified MCP interface — one index, any AI.
 
 Instead of every AI tool building its own isolated context, Relith acts as a **shared intelligence layer** that Cursor, Claude Code, OpenCode, and any MCP client can query for code search, symbol lookup, reference tracking, and dependency graph traversal.
 
 ## Features
 
-- **MCP-native** - 17 tools for AI assistants: search, symbols, references, definitions, callers/callees, file outline, dependency trace, graph queries, architecture overview
-- **Cross-file reasoning** - Combine FTS search + symbol matches + references + graph neighbors into one context bundle via `trace_context`
-- **Knowledge graph** - Typed dependency graph with import edges (Go/JS/TS/Python/Rust) and reference co-occurrence edges (all languages)
-- **Graph visualization** - Interactive D3.js force-directed graph in the browser (`/v1/graph.html`)
-- **Symbol extraction** - Functions, types, structs, methods, interfaces, enums, traits, macros per language (17 languages)
-- **Reference extraction** - Function calls, imports, usages across all code files
-- **Multi-repo** - Index unlimited repos, search across them all at once
-- **File watcher** - Auto-reindexes changed files via fsnotify
-- **REST API** - HTTP server for scripts, CI pipelines, and programmatic access
-- **Single binary** - Go binary, no npm/pip/uv, no Docker, no runtime
-- **Local-first** - Your code never leaves your machine, zero cloud dependencies
+- **MCP-native** — 17 tools for AI assistants: search, symbols, references, definitions, callers/callees, file outline, dependency trace, graph queries, architecture overview
+- **Cross-file reasoning** — Combine FTS search + symbol matches + references + graph neighbors into one context bundle via `trace_context`
+- **Knowledge graph** — Typed dependency graph with import edges (Go/JS/TS/Python/Rust) and reference co-occurrence edges (all languages)
+- **Graph visualization** — Interactive D3.js force-directed graph in the browser (`/v1/graph`)
+- **Symbol extraction** — Functions, types, structs, methods, interfaces, enums, traits, macros per language (17 languages)
+- **Reference extraction** — Function calls, imports, usages across all code files
+- **Multi-repo** — Index unlimited repos, search across them all at once
+- **File watcher** — Auto-reindexes changed files via fsnotify
+- **REST API** — HTTP server for scripts, CI pipelines, and programmatic access
+- **Terminal UI** — Bubble Tea progress bars, spinners, and server dashboard for interactive commands
+- **Single binary** — Go binary, no npm/pip/uv, no Docker, no runtime
+- **Local-first** — Your code never leaves your machine, zero cloud dependencies
 
 ### Performance
 
@@ -83,9 +84,11 @@ make build-all
 | `relith db vacuum` | Reclaim unused database space |
 | `relith version` | Print version |
 
+Interactive commands (`index`, `remove`, `serve`) show a Bubble Tea TUI automatically when run in a terminal.
+
 ## MCP Server
 
-Relith exposes an MCP server over stdio. Connect any MCP-compatible AI assistant (Cursor, Claude Code, OpenCode) - 17 tools covering search, symbol intelligence, graph traversal, and file operations.
+Relith exposes an MCP server over stdio. Connect any MCP-compatible AI assistant (Cursor, Claude Code, OpenCode) — 17 tools covering search, symbol intelligence, graph traversal, and file operations.
 
 ### Setup
 
@@ -107,7 +110,7 @@ After running `relith install`, restart your agent. The tools are available auto
 |------|-------------|----------------|
 | `search_code` | Full-text search across all indexed repos | `query` (req), `repo_name`, `language`, `max_results` |
 | `get_file_content` | Retrieve file content by repo + path | `repo_name` (req), `path` (req) |
-| `list_repositories` | List all tracked repos | - |
+| `list_repositories` | List all tracked repos | — |
 | `get_repo_summary` | Language breakdown, file/chunk counts, last indexed | `repo_name` (req) |
 | `find_symbol` | Search symbols by name prefix | `name` (req), `kind`, `repo_name` |
 | `find_references` | Find all call sites for a symbol across all repos | `name` (req), `repo_name` |
@@ -121,18 +124,18 @@ After running `relith install`, restart your agent. The tools are available auto
 | `query_graph` | Query the knowledge graph: neighbors, hotspots, dependency paths | `mode` (req), `repo_name` (req), `path` |
 | `get_architecture` | High-level architecture: languages, directories, entry points, hotspots | `repo_name` (req) |
 | `trace_dependency` | Trace import/reference chains (recursive) | `repo_name` (req), `path` (req), `direction`, `depth` |
-| `get_file_tree` | Browse directory tree - show immediate children at a path | `repo_name` (req), `path` |
+| `get_file_tree` | Browse directory tree — show immediate children at a path | `repo_name` (req), `path` |
 
 ### Manual Setup
 
-**Cursor** - Settings → MCP Servers → Add new:
+**Cursor** — Settings → MCP Servers → Add new:
 ```
 Name: relith
 Type: command
 Command: /path/to/relithmcp
 ```
 
-**Claude Code** - add to `~/.config/claude/mcp.json`:
+**Claude Code** — add to `~/.config/claude/mcp.json`:
 ```json
 {"mcpServers": {"relith": {"command": "/path/to/relithmcp"}}}
 ```
@@ -148,7 +151,7 @@ curl -s http://127.0.0.1:9876/v1/health
 curl -s http://127.0.0.1:9876/v1/stats
 curl -s "http://127.0.0.1:9876/v1/search?q=sqlite"
 curl -s "http://127.0.0.1:9876/v1/graph?repo=my-repo"
-curl -s "http://127.0.0.1:9876/v1/graph.html"    # Interactive D3.js graph UI
+curl -s "http://127.0.0.1:9876/v1/graph"   # Interactive D3.js graph UI (browser)
 ```
 
 | Method | Path | Description |
@@ -164,8 +167,8 @@ curl -s "http://127.0.0.1:9876/v1/graph.html"    # Interactive D3.js graph UI
 | GET | `/v1/content?repo=&path=` | File content |
 | GET | `/v1/reason?q=&repo=` | Cross-file reasoning bundle |
 | GET | `/v1/stats` | Aggregate stats with savings % |
-| GET | `/v1/graph?repo=` | Graph edges data |
-| GET | `/v1/graph.html` | Interactive graph visualization |
+| GET | `/v1/graph?repo=` | Graph edges data (JSON) |
+| GET | `/v1/graph` | Interactive graph visualization (HTML) |
 
 ## Configuration
 
@@ -177,9 +180,19 @@ Environment variables with `RELITH_` prefix override file values.
 core:
   data_dir: ~/.local/share/relith
 
+daemon:
+  socket: ""                    # empty = TCP; set to use Unix socket
+  tcp_host: 127.0.0.1
+  tcp_port: 9876
+
+mcp:
+  enabled: true
+  transport: stdio
+  tcp_port: 9877
+
 indexer:
-  concurrency: 4          # parallel file workers
-  max_file_size: 10485760 # 10 MB limit
+  concurrency: 4                # parallel file workers
+  max_file_size: 10485760       # 10 MB limit
 
 watcher:
   enabled: true
@@ -188,11 +201,6 @@ watcher:
 search:
   max_results: 100
   path_boosting: true
-
-log:
-  level: info
-  format: console
-  output: stderr
 ```
 
 ## Architecture
@@ -201,7 +209,7 @@ Three binaries sharing the same SQLite database:
 
 | Binary | Role | Interface |
 |--------|------|-----------|
-| `relith` | CLI client | Terminal commands |
+| `relith` | CLI client | Terminal commands (Bubble Tea TUI for interactive) |
 | `relithd` | Daemon | REST API + graph UI + file watcher |
 | `relithmcp` | MCP server | stdio JSON-RPC for AI assistants |
 
@@ -213,4 +221,4 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 
 ## License
 
-MIT - see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE) for details.

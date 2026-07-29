@@ -14,7 +14,7 @@
 10. [Search Architecture](#10-search-architecture)
 11. [Daemon Lifecycle](#11-daemon-lifecycle)
 12. [Configuration Structure](#12-configuration-structure)
-13. [Logging Strategy](#13-logging-strategy)
+13. [Terminal UI](#13-terminal-ui)
 14. [Performance Optimizations](#14-performance-optimizations)
 15. [Version Roadmap](#15-version-roadmap)
 
@@ -53,6 +53,7 @@
                       │
          ┌────────────┴───────────┐
          │  CLI (relith, cobra)    │
+         │  Bubble Tea TUI         │
          └────────────────────────┘
 ```
 
@@ -62,6 +63,8 @@
 - **CLI opens DB directly**: No daemon HTTP hop for CLI operations. Simpler, faster, no dependency on a running daemon.
 - **Unix socket for daemon API**: File-system permissions as security boundary, no port conflicts. Windows falls back to localhost TCP.
 - **SQLite with FTS5**: Zero-dependency embedded database with full-text search. WAL mode allows concurrent readers (MCP + daemon + CLI can coexist).
+- **Bubble Tea TUI**: Interactive CLI commands (`index`, `remove`, `serve`) use Bubble Tea for progress bars, spinners, and server dashboard when run in a terminal. Falls back to plain output when piped.
+- **Stdlib slog**: All internal logging uses `log/slog`. CLI commands use `slog.DiscardHandler` in TUI mode; daemon and MCP binary use `slog.NewTextHandler(os.Stderr, nil)`.
 
 ## 2. Folder Structure
 
@@ -78,8 +81,11 @@ relith/
 ├── internal/
 │   ├── api/                       # REST API layer
 │   │   ├── handlers.go            # Route handlers (health, repos, search)
+│   │   ├── handlers_admin.go      # Admin handlers (stats, graph)
 │   │   ├── response.go            # JSON response helpers
-│   │   └── server.go              # HTTP server, routing, middleware
+│   │   ├── server.go              # HTTP server, routing
+│   │   └── web/                   # Embedded dashboard + graph UI
+│   │       └── index.html
 │   │
 │   ├── mcp/                       # MCP protocol server
 │   │   ├── mcp.go                 # Protocol types (JSON-RPC, capabilities)
@@ -90,16 +96,21 @@ relith/
 │   ├── indexer/                   # Core indexing engine
 │   │   ├── indexer.go             # Orchestrator (IndexRepo, IndexFile, DeleteFile)
 │   │   ├── walker.go              # Directory walk + binary/hidden file filter
-│   │   ├── chunker.go             # Line-based chunking with overlap
 │   │   ├── language.go            # Extension-to-language mapping
-│   │   ├── symbols.go             # Symbol extraction (functions, types, variables)
-│   │   ├── refs.go                # Ref extraction (function calls, references)
+│   │   ├── refs.go                # Byte-level ref scanner (function calls)
 │   │   ├── graph.go               # Import & ref edge builder for dependency graph
-│   │   ├── cleanup.go             # Multi-table deletion for repo/document removal
-│   │   ├── java.go                # Java-specific chunker (handles generics)
-│   │   ├── cpp.go                 # C/C++/C#/Kotlin/Swift/ObjC/Scala/Dart/Zig/F# chunker
+│   │   └── cleanup.go             # Multi-table deletion for repo/document removal
+│   │
+│   ├── chunker/                   # Language-specific code chunkers
+│   │   ├── chunker.go             # Chunker interface + registry + fallback
+│   │   ├── golang_ast.go          # Go AST-based chunker
+│   │   ├── python.go              # Python indentation-based chunker
+│   │   ├── js.go                  # JS/TS/Rust chunker
+│   │   ├── java.go                # Java chunker
+│   │   ├── cpp.go                 # C/C++/C#/Kotlin/Swift/ObjC/Scala/Dart/Zig/F#
 │   │   ├── php.go                 # PHP chunker
-│   │   └── ruby.go                # Ruby chunker
+│   │   ├── ruby.go                # Ruby chunker
+│   │   └── brace.go               # Generic brace-based chunker (Perl, F#)
 │   │
 │   ├── watcher/                   # Filesystem event watcher
 │   │   ├── watcher.go             # fsnotify wrapper
@@ -115,12 +126,20 @@ relith/
 │   │   ├── chunks.sql.go          # Chunk CRUD + FTS5 sync
 │   │   ├── symbols.sql.go         # Symbol CRUD (functions, types, variables)
 │   │   ├── refs.sql.go            # Ref CRUD (function calls, references)
-│   │   ├── graph.sql.go           # Graph edge queries
-│   │   └── sqlite.go              # Connection, WAL, PRAGMAs (split from db.go)
+│   │   └── graph.sql.go           # Graph edge queries
 │   │
 │   ├── search/                    # Search abstraction over FTS5
 │   │   ├── search.go              # Searcher with FTS5 queries
 │   │   └── query.go               # Query builder (prefix, phrase, operators)
+│   │
+│   ├── reasoning/                 # Context gathering engine
+│   │   └── reasoning.go           # Trace() — combines search + symbols + graph
+│   │
+│   ├── tui/                       # Terminal UI components (Bubble Tea)
+│   │   ├── styles.go              # Lipgloss styles (orange/amber theme)
+│   │   ├── progress.go            # Indexing progress bar model
+│   │   ├── spinner.go             # Generic spinner for short ops (remove)
+│   │   └── server.go              # Server dashboard model (serve)
 │   │
 │   ├── daemon/                    # Orchestrator
 │   │   └── daemon.go              # Init DB, start API server, signal handling
@@ -131,19 +150,22 @@ relith/
 │   │
 │   ├── cli/                       # CLI commands (cobra)
 │   │   ├── root.go                # Root command
+│   │   ├── repo.go                # repo parent command
 │   │   ├── repo_add.go            # repo add
 │   │   ├── repo_list.go           # repo list
-│   │   ├── index.go               # index
+│   │   ├── repo_remove.go         # repo remove (TUI spinner)
+│   │   ├── index.go               # index (TUI progress bar)
 │   │   ├── search.go              # search
-│   │   ├── status.go              # status
-│   │   ├── util.go                # Shared DB open helper
-│   │   └── version.go             # Version command + ldflags injection
+│   │   ├── status.go              # status (styled output via tui styles)
+│   │   ├── serve.go               # serve (TUI server dashboard)
+│   │   ├── install.go             # install MCP for agents
+│   │   ├── uninstall.go           # uninstall MCP from agents
+│   │   ├── db.go                  # db vacuum
+│   │   ├── version.go             # Version command + ldflags injection
+│   │   └── util.go                # Shared DB open helper
 │   │
-│   ├── app/                       # Shared application struct
-│   │   └── app.go
-│   │
-│   └── logger/                    # Structured logging
-│       └── logger.go              # Zerolog setup (console/json)
+│   └── app/                       # Shared application struct
+│       └── app.go
 │
 ├── sql/
 │   ├── migrations/                # SQL migration files (embed.FS)
@@ -168,9 +190,9 @@ relith/
 
 ### Why this structure
 
-- **`internal/`**: Go visibility enforcement -- these packages cannot be imported by external consumers.
+- **`internal/`**: Go visibility enforcement — these packages cannot be imported by external consumers.
 - **`sql/` separate from `db/`**: Source of truth (SQL migrations + sqlc queries) vs generated Go code.
-- **`cmd/`**: Thin entry points -- parse flags, load config, launch component. Zero business logic.
+- **`cmd/`**: Thin entry points — parse flags, load config, launch component. Zero business logic.
 - **`bin/`**: Build output, gitignored.
 
 ## 3. Package Responsibilities
@@ -180,16 +202,18 @@ relith/
 | `cmd/relith`       | Parse CLI flags (cobra), open DB, dispatch commands                  | `internal/cli`, `internal/config`, `internal/db`     |
 | `cmd/relithd`      | Parse flags, load config, instantiate daemon, block on signal        | `internal/daemon`, `internal/config`                 |
 | `cmd/relithmcp`    | Load config, open DB, start MCP server over stdio                    | `internal/mcp`, `internal/config`, `internal/db`     |
-| `internal/api`     | HTTP routing, request validation, JSON marshaling                    | `internal/db`, `internal/search`                     |
-| `internal/mcp`     | JSON-RPC over stdio, tool/resource registration, dispatch            | `internal/db`, `internal/search`                     |
-| `internal/indexer` | Walk filesystems, detect languages, chunk content, hash-based diff, extract symbols/refs, build dependency graph | `internal/db`                                        |
+| `internal/api`     | HTTP routing, request validation, JSON marshaling                    | `internal/db`, `internal/search`, `internal/indexer`, `internal/reasoning` |
+| `internal/mcp`     | JSON-RPC over stdio, tool/resource registration, dispatch            | `internal/db`, `internal/search`, `internal/reasoning` |
+| `internal/indexer` | Walk filesystems, detect languages, chunk content, hash-based diff, extract symbols/refs, build dependency graph | `internal/db`, `internal/chunker`                     |
+| `internal/chunker` | Language-specific code chunking (AST, regex, brace-matching)         | None                                                  |
 | `internal/watcher` | Wrap fsnotify, debounce, filter, call IndexFile/DeleteFile           | `internal/indexer`                                   |
 | `internal/db`      | Connection lifecycle, migration runner, sqlc-generated methods       | None (sqlite driver only)                            |
 | `internal/search`  | FTS5 query construction, BM25 ranking, result formatting             | `internal/db`                                        |
+| `internal/reasoning`| Combine search + symbols + refs + graph into a context bundle       | `internal/db`, `internal/search`                     |
+| `internal/tui`     | Bubble Tea models (progress bar, spinner, server dashboard)          | `internal/indexer` (for ProgressEvent type)          |
 | `internal/daemon`  | Component wiring, graceful shutdown, signal handling                 | `internal/api`, `internal/config`                    |
 | `internal/config`  | Load/merge config from file + env, validate, defaults                | viper                                                |
-| `internal/cli`     | Cobra command definitions for repo CRUD, index, search, status       | `internal/db`, `internal/indexer`, `internal/search` |
-| `internal/logger`  | Zerolog setup (console/json output, level, file)                     | `internal/config`                                    |
+| `internal/cli`     | Cobra command definitions, TUI dispatch                              | `internal/db`, `internal/indexer`, `internal/search`, `internal/tui` |
 | `internal/app`     | Shared App struct (Config, Logger, DB)                               | `internal/config`                                    |
 
 ## 4. Data Flow
@@ -201,17 +225,18 @@ User: relith repo add /path/to/project
 
 CLI ── open DB ──▶ INSERT INTO repositories
                ──▶ Indexer: WalkRepo → for each file:
-                        - compute SHA-256 hash
+                        - compute FNV-64a hash
                         - detect language
-                        - chunk content (50 lines, 10 overlap)
+                        - chunk content (50 lines, 0 overlap for fallback;
+                          AST/regex boundaries for language-specific)
                         - write document + chunks to DB
                         - FTS5 sync triggers populate chunks_fts
-                        - extract symbols (functions, types, variables)
-                        - extract refs (function calls, imports, references)
-                        - batch INSERT symbols + refs
+                        - extract refs (function calls via byte-level scanner)
+                        - batch INSERT refs
                ──▶ BuildGraphForRepo:
                         - extract import edges (Go/JS/TS/Python/Rust)
                         - compute ref edges via refs JOIN symbols
+                          (filtered by symbol_freq CTE to avoid explosion)
                         - batch INSERT into graph_edges table
                         - kinds: 'import' (explicit) + 'references' (co-occurrence)
 ```
@@ -225,7 +250,8 @@ AI Tool ── MCP "search_code" ──▶ MCP Server
                                    search.go: buildMatchQuery("auth middleware")
                                        │
                                        ▼
-                                   SELECT FROM chunks_fts JOIN chunks JOIN documents JOIN repositories
+                                   SELECT FROM chunks_fts JOIN chunks
+                                   JOIN documents JOIN repositories
                                    WHERE chunks_fts MATCH ?
                                    ORDER BY rank (+ path boost)
                                        │
@@ -257,10 +283,10 @@ Three interaction patterns:
 ### Pattern 1: CLI Direct DB
 
 ```
-CLI → open DB → Queries/Indexer → DB → output
+CLI → open DB → Queries/Indexer → DB → output (TUI or plain text)
 ```
 
-Used for: adding repos, listing repos, indexing, search, status.
+Used for: adding repos, listing repos, indexing, search, status, remove, db vacuum.
 
 ### Pattern 2: Daemon HTTP API
 
@@ -268,7 +294,7 @@ Used for: adding repos, listing repos, indexing, search, status.
 Client (curl/app) → HTTP → API Handler → Queries/Searcher → JSON response
 ```
 
-Used for: health checks, programmatic access, remote queries.
+Used for: health checks, programmatic access, remote queries, graph visualization.
 
 ### Pattern 3: MCP Request
 
@@ -306,7 +332,7 @@ CREATE TABLE documents (
     repo_id         INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
     path            TEXT NOT NULL,
     size            INTEGER NOT NULL,
-    hash            TEXT NOT NULL,            -- SHA-256 hex
+    hash            TEXT NOT NULL,            -- FNV-64a hex
     mod_time        DATETIME NOT NULL,
     mime_type       TEXT,
     language        TEXT,
@@ -348,12 +374,6 @@ CREATE TRIGGER chunks_au AFTER UPDATE ON chunks BEGIN
     INSERT INTO chunks_fts(rowid, doc_id, content) VALUES (new.id, new.doc_id, new.content);
 END;
 
--- Internal key-value store
-CREATE TABLE metadata (
-    key     TEXT PRIMARY KEY,
-    value   TEXT NOT NULL
-);
-
 -- Symbol definitions (functions, types, variables, macros)
 CREATE TABLE symbols (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -362,6 +382,7 @@ CREATE TABLE symbols (
     kind     TEXT NOT NULL DEFAULT 'function'
              CHECK(kind IN ('function','type','variable','constant','method','field','enum','interface','class','struct','macro','module')),
     line     INTEGER NOT NULL DEFAULT 0,
+    col      INTEGER NOT NULL DEFAULT 0,
     parent   TEXT
 );
 CREATE INDEX idx_symbols_doc_id ON symbols(doc_id);
@@ -373,7 +394,10 @@ CREATE TABLE refs (
     doc_id   INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     name     TEXT NOT NULL,
     kind     TEXT NOT NULL DEFAULT 'call'
-             CHECK(kind IN ('call','import','use','write','read','type_ref'))
+             CHECK(kind IN ('call','import','use','write','read','type_ref')),
+    line     INTEGER NOT NULL DEFAULT 0,
+    col      INTEGER NOT NULL DEFAULT 0,
+    context  TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX idx_refs_doc_id ON refs(doc_id);
 CREATE INDEX idx_refs_name ON refs(name);
@@ -428,9 +452,18 @@ POST   /v1/repos/{id}/index            → {"files_indexed": N, "files_skipped":
 # Search
 GET    /v1/search?q=<query>            → [{doc_id, path, language, repo_name, content, score}]
 
-# Graph Visualization
-GET    /v1/graph?repo=<name>           → {nodes: [{id, path}], edges: [{source, target, weight}]}
-GET    /v1/graph.html                  → Interactive D3.js force-directed graph (browser)
+# Content
+GET    /v1/content?repo=&path=         → File content (raw)
+
+# Reasoning
+GET    /v1/reason?q=&repo=&max_results= → TraceBundle JSON
+
+# Stats
+GET    /v1/stats                       → Aggregated stats with storage savings %
+
+# Graph
+GET    /v1/graph?repo=<name>           → {nodes: [...], edges: [...]} (JSON for API consumers)
+GET    /v1/graph                       → Interactive D3.js force-directed graph (HTML for browser)
 ```
 
 ### API Examples
@@ -452,15 +485,10 @@ curl -s -X POST http://127.0.0.1:9876/v1/repos/1/index
 
 # Search
 curl -s "http://127.0.0.1:9876/v1/search?q=sqlite"
+
+# Graph as JSON
+curl -s "http://127.0.0.1:9876/v1/graph?repo=my-repo"
 ```
-
-### Not yet implemented (future)
-
-- Filtered file listing (`GET /v1/repos/:id/files`)
-- Commit history (`GET /v1/repos/:id/commits`)
-- Search suggestions (`GET /v1/search/suggest`)
-- SSE event stream (`GET /v1/events`)
-- Web UI beyond graph (planned: search, repo management in browser)
 
 ## 8. MCP Tools
 
@@ -472,7 +500,7 @@ The MCP server (`relithmcp`) implements the [Model Context Protocol](https://mod
 | --------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------- |
 | `search_code`         | Full-text search across indexed repos            | `query` (required), `repo_name` (optional), `language` (optional), `max_results` (default 20) |
 | `get_file_content`    | Retrieve a file's content by repo name + path    | `repo_name` (required), `path` (required)                                                     |
-| `list_repositories`   | List all tracked repos with status and file count | -                                                                                           |
+| `list_repositories`   | List all tracked repos with status and file count | —                                                                                           |
 | `get_repo_summary`    | Language breakdown, file/chunk count, last indexed| `repo_name` (required)                                                                        |
 | `find_symbol`         | Search symbols by name prefix                    | `name` (required), `kind` (optional), `repo_name` (optional)                                  |
 | `find_references`     | Find all call sites for a symbol name            | `name` (required), `repo_name` (optional)                                                     |
@@ -507,8 +535,6 @@ Uses JSON-RPC 2.0 with MCP protocol version `2024-11-05`. Session lifecycle:
 ```
 relith://repos                  → All repositories (JSON)
 relith://repos/{id}              → Repository metadata
-relith://repos/{id}/files        → File listing per repo (JSON)
-relith://repos/{id}/graph        → Graph edges per repo (JSON)
 ```
 
 ## 9. Indexing Workflow
@@ -521,33 +547,35 @@ relith://repos/{id}/graph        → Graph edges per repo (JSON)
    - Skip `.git`, `node_modules`, `vendor`, `__pycache__`, hidden files, binary extensions
    - Skip files > max_file_size (default 10MB)
    - Skip empty files
-4. For each qualifying file:
-   - Compute SHA-256 hash
-   - Read mod_time, size
+   - Prioritize high-value files (main entry points: `main.go`, `package.json`, `go.mod`, etc.)
+4. Process files in batches of 500 with N concurrent workers (default 4):
+   - Read file content
+   - Compute FNV-64a hash for change detection
+   - Check mod_time/size against existing document — skip if unchanged
    - Detect language (extension map: ~90 languages)
-   - Read content
-   - Chunk into overlapping segments (default 50 lines, 10 overlap)
-   - **Extract symbols**: regex-based parser per language finds function/type/variable definitions
-   - **Extract refs**: regex-based parser per language finds function calls, imports, references
-5. Write to DB in concurrent batches (multi-row INSERTs):
+   - Chunk via language-specific chunker; fall back to line-based (50 lines, 0 overlap)
+   - **Extract refs**: byte-level scanner finds `identifier()` patterns (no allocations, no regex)
+   - Send batch to serial writer goroutine
+5. Writer goroutine batch-inserts to DB (multi-row INSERTs, 199 rows per stmt):
    - Create/update document row
-   - Delete old chunks (if updating)
+   - Delete old chunks/symbols/refs (if updating)
    - Insert new chunks (FTS5 sync triggers populate `chunks_fts`)
-   - Batch INSERT symbols + refs (199 rows per stmt, respects 999 SQLite param limit)
-6. Update repo: status=`ready`, file_count, last_indexed_at
+   - Batch INSERT refs
+6. Delete stale documents (in DB but not on disk)
+7. Update repo: status=`ready`, file_count, last_indexed_at
 
 ### Graph Build (runs after index)
 
 1. Clear existing `graph_edges` for repo
-2. Extract import edges per doc (Go: `import "...", JS/TS: `from "...", Python: `import ...`, Rust: `use ...`)
-3. Compute ref edges: `SELECT FROM refs JOIN symbols ON name` (filtered by `symbol_freq` CTE to exclude names in >20 docs to avoid combinatorial explosion)
+2. Extract import edges per doc: Go (`import "..."`), JS/TS (`from "..."`), Python (`import ...`), Rust (`use ...`)
+3. Compute ref edges: `SELECT FROM refs JOIN symbols ON name` (filtered by `symbol_freq` CTE to exclude names in >20 docs — avoids combinatorial explosion)
 4. Batch INSERT all edges into `graph_edges` table (kinds: `import`, `references`)
-5. Non-import-capable languages (C/C++/Java/PHP/Ruby/etc.) skip the per-doc import loop - only ref edges are computed for those
+5. Non-import-capable languages (C/C++/Java/PHP/Ruby/etc.) skip the per-doc import loop — only ref edges are computed
 
 ### Incremental Index (File Change via Watcher)
 
 1. Receive fsnotify event (file created/modified/deleted)
-2. Debounce (coalesce rapid events)
+2. Debounce (coalesce rapid events within configurable window)
 3. If file exists and hash unchanged → skip
 4. If file exists and hash changed → update document + chunks
 5. If file deleted → delete document + chunks (cascade)
@@ -566,7 +594,7 @@ CREATE VIRTUAL TABLE chunks_fts USING fts5(
 );
 ```
 
-- `porter`: English stemming (running -> run)
+- `porter`: English stemming (running → run)
 - `unicode61`: Unicode-aware tokenization
 - Content-sync: triggers on `chunks` table keep FTS5 in sync automatically
 
@@ -577,10 +605,10 @@ Raw query: "auth middleware"
      │
      ▼
   buildMatchQuery()
-     ├── Single term -> "term"*    (prefix match)
-     ├── Multiple terms -> "t1" "t2" (AND by default)
-     ├── Quoted -> preserved as phrase
-     ├── Has FTS5 operators (AND, OR, NOT) -> passthrough
+     ├── Single term → "term"*    (prefix match)
+     ├── Multiple terms → "t1" "t2" (AND by default)
+     ├── Quoted → preserved as phrase
+     ├── Has FTS5 operators (AND, OR, NOT) → passthrough
      │
      ▼
   SQL: SELECT FROM chunks_fts f
@@ -646,7 +674,7 @@ core:
   data_dir: ~/.local/share/relith
 
 daemon:
-  socket: ~/.local/share/relith/relith.sock
+  socket: ""                    # empty = TCP; set to use Unix socket
   tcp_host: 127.0.0.1
   tcp_port: 9876
 
@@ -666,51 +694,63 @@ watcher:
 search:
   max_results: 100
   path_boosting: true
-
-log:
-  level: info
-  format: console
-  output: stderr
 ```
 
 ### Environment Variable Overrides
 
-All values overridable via `RELITH_` prefix: `RELITH_LOG_LEVEL=debug`, `RELITH_DAEMON_TCP_PORT=9876`, etc.
+All values overridable via `RELITH_` prefix: `RELITH_DAEMON_TCP_PORT=9877`, `RELITH_INDEXER_CONCURRENCY=8`, etc.
 
 ### Precedence (lowest to highest)
 
 1. Default values (hardcoded in `config.go`)
 2. Config file
 3. Environment variables
-4. CLI flags (future)
 
-## 13. Logging Strategy
+## 13. Terminal UI
 
-### Logger Initialization
+CLI commands use [Bubble Tea](https://github.com/charmbracelet/bubbletea) for interactive terminal output when `os.Stdout` is a terminal. When piped or redirected, they fall back to plain text output.
 
-Uses zerolog (zero-allocation structured logger). Configuration via `log` section in config:
-- `level`: debug | info | warn | error | fatal
-- `format`: console (human-readable) | json (structured)
-- `output`: stderr | stdout | file path
+### Components
 
-### Log Levels
+All TUI components live in `internal/tui/`:
 
-| Level | What                         | Examples                                                    |
-| ----- | ---------------------------- | ----------------------------------------------------------- |
-| DEBUG | High-frequency details       | File processing, FTS5 queries                                |
-| INFO  | Significant events           | Index started/completed, repo added, daemon ready            |
-| WARN  | Recoverable issues           | File skipped (too large), watcher missed event               |
-| ERROR | Failures requiring attention | File read error, DB connection lost                          |
-| FATAL | Unrecoverable                | Config load failure, DB migration failure, port in use      |
+| Component | File | Used By | Description |
+|-----------|------|---------|-------------|
+| `Progress` | `progress.go` | `relith index` | Animated progress bar with ETA, elapsed time, file count, error count. Phases: "Walking...", progress bar during indexing, "Building graph..." |
+| `ServerModel` | `server.go` | `relith serve` | Displays server URL, uptime, and an "exit on Ctrl+C" hint in a bordered box |
+| `Spinner` | `spinner.go` | `relith repo remove` | Simple spinner that blocks on a `doneCh` — spins until backend operation completes, then prints result and exits |
+
+### Theme
+
+Orange/amber warm theme via [Lipgloss](https://github.com/charmbracelet/lipgloss):
+
+- Primary: Orange `#FF7700`
+- Accents: Yellow `#FFB347`, Gold `#FFD700`
+- Success: Green `#00CC66`
+- Error: Red `#FF4444`
+- Text: WarmWhite `#F0E6D0`, Grey `#888888`
+- Borders: Rounded with orange
+
+### TUI Detection
+
+```
+if term.IsTerminal(int(os.Stdout.Fd())) {
+    return runTUI(...)
+}
+return runPlain(...)
+```
+
+Commands using TUI: `index`, `remove`, `serve`.
+Commands with styled output (but not interactive TUI): `status`, `repo list`.
 
 ## 14. Performance Optimizations
 
 ### SQLite Tuning
 
-- `PRAGMA synchronous=NORMAL` - 2x faster writes than FULL with same durability guarantee
-- `PRAGMA cache_size=-64000` - 64MB page cache
-- `PRAGMA temp_store=MEMORY` - temp tables in memory
-- `PRAGMA mmap_size=268435456` - 256MB memory-mapped I/O
+- `PRAGMA synchronous=NORMAL` — 2× faster writes than FULL with same durability guarantee
+- `PRAGMA cache_size=-64000` — 64MB page cache
+- `PRAGMA temp_store=MEMORY` — temp tables in memory
+- `PRAGMA mmap_size=268435456` — 256MB memory-mapped I/O
 
 ### Batch Operations
 
@@ -721,9 +761,8 @@ Uses zerolog (zero-allocation structured logger). Configuration via `log` sectio
 ### Graph Build Optimization
 
 - `symbol_freq` CTE: filters symbol names appearing in >20 docs to avoid combinatorial explosion in `refs JOIN symbols`
-- Import-capable language check: only Go/JS/TS/Python/Rust files get per-doc import loop (C/C++/Java/etc. skipped - ref edges only)
+- Import-capable language check: only Go/JS/TS/Python/Rust files get per-doc import loop (C/C++/Java/etc. skipped — ref edges only)
 - Edges pre-computed into `graph_edges` table; API reads from table instead of re-running the JOIN
-- Graph page filter: only drops edges where both endpoints are outside the top 300 by degree (fix: `&&` not `||`)
 - Compound indexes `refs(name, doc_id)` and `symbols(name, doc_id)` for covering index scans on the graph query
 - Pre-filter refs and symbols to `symbol_freq` names via `WHERE name IN` before the cross-join (reduces intermediate rows from full cross-product to only names passing frequency filter)
 
@@ -735,42 +774,41 @@ Uses zerolog (zero-allocation structured logger). Configuration via `log` sectio
 | Graph build | 24min 12s | **1min 8s** | **21×** |
 | **Total** | **38min** | **15min 48s** | **2.4×** |
 
-Remaining indexing bottleneck is per-file processing (read → split → regex parse → write), which is CPU-bound on Go's regex engine and string allocation. See [Remaining Bottlenecks](#remaining-bottlenecks).
-
 ### Language-Specific Chunkers
 
-Generic line-based chunking works for every language, but language-specific chunkers provide better boundary alignment:
+| Language  | Chunker            | Strategy                                                              |
+| --------- | ------------------ | --------------------------------------------------------------------- |
+| Go        | `GoChunkerAST`     | Full AST via `go/parser` + `go/ast`. Functions, methods, types, structs, interfaces, variables, constants |
+| Python    | `PythonChunker`    | Regex-based. Tracks indentation depth. `def` → function, `class` → class, handles decorators |
+| JavaScript| `JSChunker`        | Regex + brace matching. Functions, classes, arrow functions, methods  |
+| TypeScript| `JSChunker`        | Same as JavaScript chunker                                            |
+| Rust      | `JSChunker`        | Handles `fn`, `impl`, `trait`, `struct`, `enum` via Rust-specific patterns |
+| Java      | `JavaChunker`      | Regex + brace matching. Classes (inner + outer), methods, constructors, annotations |
+| C/C++/C#/Kotlin/Swift/ObjC/Scala/Dart/Zig/F# | `CppChunker` | Massive pattern set. Handles C++ constructors, C# records/delegates/events, Kotlin fun/class/object, Swift func/class/struct/enum/protocol. Brace matching |
+| PHP       | `PHPChunker`       | Regex + brace matching. Functions, classes, interfaces, traits, enums. Skips PHP tags and imports |
+| Ruby      | `RubyChunker`      | Regex-based. `def`/`end` depth tracking for scope                      |
+| Perl, F#  | `BraceChunker`     | Generic brace-based. Detects class/struct/interface/trait/enum + function/fn |
+| All others| `FallbackChunker`  | Line-based: 50 lines per chunk, 0 overlap                              |
 
-| Language  | Strategy                                                              |
-| --------- | --------------------------------------------------------------------- |
-| Java      | Top-level class boundary + handles nested generics `ApiResponse<Page<...>>` |
-| C/C++/etc.| Function boundary + brace balancing (C, C++, C#, Kotlin, Swift, ObjC, Scala, Dart, Zig, F#) |
-| PHP       | `<?php` / `?>` + function boundary                                     |
-| Ruby      | `def` / `end` scoping                                                  |
+### Per-File Processing Pipeline
 
-### Remaining Bottlenecks
-
-Current per-file processing pipeline (index phase):
+Current pipeline (index phase):
 ```
 ReadFile (full string) ─┐
-  ├── Chunker: strings.Split(content, "\n")    ← split #1
-  │       └── regex line-by-line for decls
+  ├── Chunker: strings.Split(content, "\n")
+  │       └── regex or scanner line-by-line for decls
   ├── ExtractReferences: byte-level scanner    ← no split, no regex
-  └── fastHash(content)                         ← FNV hash
-                          └── writeBatch (serial, 500 files per batch)
+  └── fastHash(content)                        ← FNV-64a
+                       └── writeBatch (serial, 500 files per batch)
 ```
 
-Top optimization opportunities (in priority order):
-1. ~~Triple `strings.Split` elimination~~ **Done**: ref extractor uses byte-level scanner (no split needed)
-2. ~~Replace regex in ref extraction with byte-level scanner~~ **Done**: `ExtractReferences` scans content for `(` then walks backwards for the identifier name — no allocations, no regex, no split
-3. ~~Redundant `os.Stat` in ReadFileContent~~ **Done**: `prepareBatchWork` reads directly via `os.ReadFile`, using `fi.Size` from the walk
-4. ~~Skip generated files in walker~~ **Done**: added `generated/`, `tools/`, `scripts/` to `skipDirs`
-5. Pipeline writes with reads: Producer/consumer channel so DB writes overlap with next batch's file preparation
-6. Reuse worker pool: Currently created/destroyed every 500 files × 188 batches; use a long-lived pool
+Remaining optimization opportunities (in priority order):
+1. Pipeline writes with reads: Producer/consumer channel so DB writes overlap with next batch's file preparation
+2. Reuse worker pool: Currently created/destroyed every 500 files × 188 batches; use a long-lived pool
 
 ## 15. Version Roadmap
 
-### v0.1 - MVP (Complete)
+### v0.1 — MVP (Complete)
 
 - Go module with CLI (cobra), daemon entry point, config loading
 - SQLite with FTS5, sqlc-generated queries, migrations
@@ -778,9 +816,8 @@ Top optimization opportunities (in priority order):
 - CLI commands: `repo add`, `repo list`, `index`, `search`, `status`
 - REST API: health, repo CRUD, indexing trigger, search
 - File watcher (fsnotify + debouncer)
-- Zerolog structured logging
 
-### v0.2 - Symbol & Graph
+### v0.2 — Symbol & Graph (Complete)
 
 - MCP server with 7 tools: search_code, get_file_content, list_repositories, get_repo_summary, find_symbols, find_refs, graph_hubs
 - Cross-platform builds (Windows + Linux + macOS)
@@ -793,35 +830,34 @@ Top optimization opportunities (in priority order):
 - SQLite performance tuning (PRAGMAs, batch INSERTs)
 - FTS content deletion fix (explicit cleanup for FK CASCADE gaps)
 
-### v0.3 - Reasoning Engine
+### v0.3 — Reasoning Engine (Complete)
 
 - Graph-enhanced code reasoning (`internal/reasoning`)
 - Seed-based context gathering (seed docs → related files via graph edges → related repos)
-- MCP tool: `get_code_context` - collects relevant context for a query
+- MCP tool: `get_code_context` (later renamed `trace_context`)
 - Browser-based graph UI hardened
 
-### v0.4 - Performance & Scale
+### v0.4 — Performance & Scale (Complete)
 
-- Graph build optimization: `symbol_freq` CTE + `WHERE name IN` pre-filter + compound indexes
-- Compound indexes `refs(name, doc_id)` and `symbols(name, doc_id)` for covering index scans
-- Pre-filter refs/symbols to `symbol_freq` names via `WHERE name IN` before the cross-join
+- Graph build optimization: `symbol_freq` CTE + `WHERE name IN` pre-filter + compound indexes (21× graph build speedup)
 - Import-capable language filter: only Go/JS/TS/Python/Rust files get per-doc import loop
-- Edge filter fix in graph UI: `&&` not `||` - drops edges only when both endpoints are outside top 300
-- SQLite PRAGMA tuning: `synchronous=NORMAL`, `cache_size=-64000`, `temp_store=MEMORY`, `mmap_size=268435456`
-- Batch multi-row INSERTs for chunks, symbols, refs, graph edges
+- SQLite PRAGMA tuning + batch multi-row INSERTs
 - FTS cleanup: explicit multi-table deletion (`DeleteDocuments`, `DeleteRepoWithData`)
-- Linux kernel 94K files: **15min 48s total** (index 14min 40s + graph build 1min 8s, graph 21× faster)
+- Linux kernel 94K files: **15min 48s total** (index 14min 40s + graph build 1min 8s)
 
-### v0.5 - Code Intelligence (Current)
+### v0.5 — Code Intelligence (Complete)
 
-- Byte-level ref scanner: eliminated `strings.Split` + regex in `ExtractReferences` (no allocations, no regex engine)
-- Redundant `os.Stat` bypass: `prepareBatchWork` reads directly using walker's `fi.Size`
-- Walker skip list: added `generated/`, `tools/`, `scripts/` (reduces file count 5-10% for kernel)
-- MCP tools: `find_symbol`, `find_references`, `get_symbol_definition`, `find_callees`, `find_callers`
-- File intelligence: `get_file_outline` (symbols + refs in a file), `get_file_tree` (directory browser)
-- Graph traversal: `get_related_files`, `trace_dependency`, `query_graph`, `get_architecture`, `list_hub_files`
-- Context gathering: `trace_context` combines FTS search + symbol matches + references + graph-linked files into one reasoning bundle
-- 17 total MCP tools covering search, symbol, reference, graph, and file operations
+- Byte-level ref scanner no-allocation, no-regex `ExtractReferences`
+- Walker skip list additions (`generated/`, `tools/`, `scripts/`)
+- Expanded to 17 MCP tools: symbol definition, callers/callees, file outline, file tree, dependency trace, graph queries, architecture overview, context tracing
+- Chunk memory fix: removed `content` from `batchWork` struct (unused in batch path), `strings.Clone` on ref context to prevent substring pinning of large files
+- Log migration: removed zerolog, migrated all packages to stdlib `log/slog`
+- Terminal UI: Bubble Tea progress bar for `index`, spinner for `remove`, server dashboard for `serve`
+- Config cleanup: removed `log` section from config
+
+### v0.6 — Work In Progress
+
+- **Storage optimization**: Reduce chunk storage overhead (deduplicate identical chunks, optional comment stripping for FTS)
 
 ### Planned
 
