@@ -91,6 +91,7 @@ relith/
 │   │   ├── mcp.go                 # Protocol types (JSON-RPC, capabilities)
 │   │   ├── server.go              # JSON-RPC dispatcher, lifecycle
 │   │   ├── tools.go               # Tool handlers (search_code, etc.)
+│   │   ├── tools_git.go           # Git tools (commits, history, blame, diff)
 │   │   └── resources.go           # Resource URI handlers
 │   │
 │   ├── indexer/                   # Core indexing engine
@@ -131,6 +132,9 @@ relith/
 │   ├── search/                    # Search abstraction over FTS5
 │   │   ├── search.go              # Searcher with FTS5 queries
 │   │   └── query.go               # Query builder (prefix, phrase, operators)
+│   │
+│   ├── git/                       # Git-aware context (shells out to `git`)
+│   │   └── git.go                 # Commits, file history, blame, diff helpers
 │   │
 │   ├── reasoning/                 # Context gathering engine
 │   │   └── reasoning.go           # Trace() — combines search + symbols + graph
@@ -203,12 +207,13 @@ relith/
 | `cmd/relithd`      | Parse flags, load config, instantiate daemon, block on signal        | `internal/daemon`, `internal/config`                 |
 | `cmd/relithmcp`    | Load config, open DB, start MCP server over stdio                    | `internal/mcp`, `internal/config`, `internal/db`     |
 | `internal/api`     | HTTP routing, request validation, JSON marshaling                    | `internal/db`, `internal/search`, `internal/indexer`, `internal/reasoning` |
-| `internal/mcp`     | JSON-RPC over stdio, tool/resource registration, dispatch            | `internal/db`, `internal/search`, `internal/reasoning` |
+| `internal/mcp`     | JSON-RPC over stdio, tool/resource registration, dispatch            | `internal/db`, `internal/search`, `internal/reasoning`, `internal/git` |
 | `internal/indexer` | Walk filesystems, detect languages, chunk content, hash-based diff, extract symbols/refs, build dependency graph | `internal/db`, `internal/chunker`                     |
 | `internal/chunker` | Language-specific code chunking (AST, regex, brace-matching)         | None                                                  |
 | `internal/watcher` | Wrap fsnotify, debounce, filter, call IndexFile/DeleteFile           | `internal/indexer`                                   |
 | `internal/db`      | Connection lifecycle, migration runner, sqlc-generated methods       | None (sqlite driver only)                            |
 | `internal/search`  | FTS5 query construction, BM25 ranking, result formatting             | `internal/db`                                        |
+| `internal/git`     | Git-aware context: commits, file history, blame, diffs                | None (invokes the `git` CLI)                        |
 | `internal/reasoning`| Combine search + symbols + refs + graph into a context bundle       | `internal/db`, `internal/search`                     |
 | `internal/tui`     | Bubble Tea models (progress bar, spinner, server dashboard)          | `internal/indexer` (for ProgressEvent type)          |
 | `internal/daemon`  | Component wiring, graceful shutdown, signal handling                 | `internal/api`, `internal/config`                    |
@@ -515,6 +520,14 @@ The MCP server (`relithmcp`) implements the [Model Context Protocol](https://mod
 | `get_architecture`    | High-level arch overview (langs, dirs, hubs)     | `repo_name` (required), `max_results` (default 10)                                             |
 | `trace_dependency`    | Import/reference dependency trace (recursive)    | `repo_name` (required), `path` (required), `direction`, `depth` (default 1), `max_results`     |
 | `get_file_tree`       | Browse directory tree (show immediate children)  | `repo_name` (required), `path` (optional, defaults to root)                                    |
+| `get_recent_commits`  | Recent git commits (hash, date, author, subject)  | `repo_name` (required), `max` (default 20)                                                      |
+| `get_file_history`    | Commit history for a file (follows renames)       | `repo_name` (required), `path` (required), `max` (default 20)                                   |
+| `get_blame`           | Per-line authorship for a file or line range      | `repo_name` (required), `path` (required), `start_line`, `end_line`                             |
+| `get_diff`            | Stat summary + full patch between two refs        | `repo_name` (required), `base` (default HEAD~1), `head` (default HEAD), `max_stat`              |
+
+### Git-Aware Context
+
+The four git tools shell out to the system `git` binary (running with the repo root as workdir) — no git library dependency. They enrich MCP answers with *when/why/who* context: recent changes (`get_recent_commits`), what one file went through (`get_file_history`), who owns each line (`get_blame`), and exactly what a change did (`get_diff`). A repo must be a git worktree (`.git/` present) or the tools return a clear error. Parser utilities live in `internal/git/git.go`; handlers in `internal/mcp/tools_git.go`. Default `get_diff` is `HEAD~1...HEAD`, answering "what did the last commit change".
 
 ### Transport
 
@@ -717,7 +730,7 @@ All TUI components live in `internal/tui/`:
 | Component | File | Used By | Description |
 |-----------|------|---------|-------------|
 | `Progress` | `progress.go` | `relith index` | Animated progress bar with ETA, elapsed time, file count, error count. Phases: "Walking...", progress bar during indexing, "Building graph..." |
-| `ServerModel` | `server.go` | `relith serve` | Displays server URL, uptime, and an "exit on Ctrl+C" hint in a bordered box |
+| `ServerModel` | `server.go` | `relith serve` | Live dashboard: server URL plus repo/file/chunk/symbol/ref counts, refreshed every 2s. Polls `GetStats` via a `StatsFunc` passed from the CLI. |
 | `Spinner` | `spinner.go` | `relith repo remove` | Simple spinner that blocks on a `doneCh` — spins until backend operation completes, then prints result and exits |
 
 ### Theme
@@ -855,13 +868,19 @@ Remaining optimization opportunities (in priority order):
 - Terminal UI: Bubble Tea progress bar for `index`, spinner for `remove`, server dashboard for `serve`
 - Config cleanup: removed `log` section from config
 
-### v0.6 — Work In Progress
+### v0.6 — Git-Aware Context (Complete)
+
+- 4 new MCP tools (17 → 21 total): `get_recent_commits`, `get_file_history`, `get_blame`, `get_diff`
+- New `internal/git` package that shells out to the system `git` binary (no go-git dependency)
+- Answers *when / why / who* questions: recent changes, per-file history (follows renames), line authorship, and full patches between refs
+- `GetRepoByName` query for name-based repo lookup
+
+### v0.7 — Work In Progress
 
 - **Storage optimization**: Reduce chunk storage overhead (deduplicate identical chunks, optional comment stripping for FTS)
 
 ### Planned
 
-- **Git history indexing**: Extract commit history using go-git
 - **Vector embeddings / semantic search**: Natural language queries over code
 - **Autocomplete API**: `/v1/search/suggest` endpoint
 - **MCP TCP mode**: Run MCP server inside the daemon
