@@ -17,6 +17,7 @@ type model struct {
 	spinner      spinner.Model
 	prog         progress.Model
 	sub          chan indexer.ProgressEvent
+	repoName     string
 	phase        string
 	filesFound   int
 	filesIndexed int
@@ -28,14 +29,14 @@ type model struct {
 	width        int
 }
 
-func NewProgress(sub chan indexer.ProgressEvent) tea.Model {
+func NewProgress(sub chan indexer.ProgressEvent, repoName string) tea.Model {
 	s := spinner.New()
 	s.Style = spinnerStyle
 	s.Spinner = spinner.Dot
 
 	p := progress.New(progress.WithSolidFill("#FF7700"), progress.WithWidth(50))
 
-	return model{spinner: s, prog: p, sub: sub, phase: "walk"}
+	return model{spinner: s, prog: p, sub: sub, repoName: repoName, phase: "walk"}
 }
 
 func (m model) Init() tea.Cmd {
@@ -105,15 +106,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	switch m.phase {
 	case "walk":
-		return "  " + m.spinner.View() + " Walking repository...\n"
+		return "  " + m.spinner.View() + " " + TitleStyle.Render(m.repoName) + "  " + InfoStyle.Render("Walking repository...")
 	case "index":
 		return m.indexView()
 	case "graph":
-		return "  " + m.spinner.View() + " Building dependency graph...\n"
+		return "  " + m.spinner.View() + " " + TitleStyle.Render(m.repoName) + "  " + InfoStyle.Render("Building dependency graph...")
 	case "complete":
 		return ""
 	default:
-		return "  " + m.spinner.View() + " Starting...\n"
+		return "  " + m.spinner.View() + " " + TitleStyle.Render(m.repoName) + "  " + InfoStyle.Render("Starting...")
 	}
 }
 
@@ -129,15 +130,16 @@ func (m model) indexView() string {
 
 	// All files skipped — nothing new to index
 	if m.filesFound > 0 && total == m.filesFound && m.filesIndexed == 0 {
-		return fmt.Sprintf("  %s %s\n",
+		return fmt.Sprintf("  %s %s %s",
 			m.spinner.View(),
+			TitleStyle.Render(m.repoName),
 			InfoStyle.Render("All files up to date, checking graph..."))
 	}
 
 	bar := m.prog.ViewAs(pct)
 	eta := m.eta()
 
-	label := TitleStyle.Render(fmt.Sprintf("%d / %d", total, m.filesFound))
+	label := TitleStyle.Render(fmt.Sprintf("%s  %d / %d", m.repoName, total, m.filesFound))
 	errors := ""
 	if m.filesError > 0 {
 		errors = " " + ErrorStyle.Render(fmt.Sprintf("%d errs", m.filesError))
@@ -151,7 +153,7 @@ func (m model) indexView() string {
 		etaStr = " " + HighlightStyle.Render("ETA "+durationStr(eta))
 	}
 
-	return fmt.Sprintf("%s%s %s%s%s\n%s\n%s%s\n",
+	return fmt.Sprintf("%s%s %s%s%s\n%s\n%s%s",
 		m.spinner.View(),
 		SubtitleStyle.Render("Indexing"),
 		label, etaStr, errors,
@@ -161,13 +163,15 @@ func (m model) indexView() string {
 
 func (m model) finalView() string {
 	if m.err != nil {
-		return fmt.Sprintf("%s %s\n",
+		return fmt.Sprintf("%s %s\n%s",
 			ErrorStyle.Render("✗ Indexing failed:"),
+			TitleStyle.Render(m.repoName),
 			InfoStyle.Render(m.err.Error()))
 	}
 
-	return fmt.Sprintf("%s\n  %s %s  %s %s  %s %s  %s %s  %s\n",
-		SuccessStyle.Render("✓ Indexing complete!"),
+	return fmt.Sprintf("%s %s\n  %s %s  %s %s  %s %s  %s %s  %s",
+		SuccessStyle.Render("✓"),
+		TitleStyle.Render(m.repoName),
 		TitleStyle.Render("indexed"), InfoStyle.Render(fmt.Sprintf("%d", m.filesIndexed)),
 		TitleStyle.Render("chunks"), InfoStyle.Render(fmt.Sprintf("%d", m.totalChunks)),
 		TitleStyle.Render("skipped"), MutedStyle.Render(fmt.Sprintf("%d", m.filesSkipped)),

@@ -52,10 +52,7 @@ Examples:
 		}
 
 		var indexed int
-		for i, repo := range repos {
-			if i > 0 {
-				fmt.Println()
-			}
+		for _, repo := range repos {
 			if err := indexRepo(app, q, repo); err != nil {
 				fmt.Fprintf(os.Stderr, "Index failed for repo %d: %v\n", repo.ID, err)
 				continue
@@ -113,7 +110,7 @@ func indexRepoTUI(app *cliApp, repo db.Repository) error {
 		}
 	}()
 
-	p := tea.NewProgram(tui.NewProgress(eventCh))
+	p := tea.NewProgram(tui.NewProgress(eventCh, repo.Name))
 	_, err := p.Run()
 	return err
 }
