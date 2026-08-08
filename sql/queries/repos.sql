@@ -10,6 +10,10 @@ WHERE id = ?;
 SELECT * FROM repositories
 WHERE path = ?;
 
+-- name: GetRepoByName :one
+SELECT * FROM repositories
+WHERE name = ?;
+
 -- name: CreateRepo :one
 INSERT INTO repositories (path, name, remote_url)
 VALUES (?, ?, ?)

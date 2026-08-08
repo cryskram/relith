@@ -38,6 +38,7 @@ type Querier interface {
 	GetGraphEdgesFromTable(ctx context.Context, repoID int64) ([]GetGraphEdgesFromTableRow, error)
 	GetGraphNodes(ctx context.Context, repoID int64) ([]GetGraphNodesRow, error)
 	GetRepo(ctx context.Context, id int64) (Repository, error)
+	GetRepoByName(ctx context.Context, name string) (Repository, error)
 	GetRepoByPath(ctx context.Context, path string) (Repository, error)
 	GetStats(ctx context.Context) (GetStatsRow, error)
 	ListChunks(ctx context.Context, docID int64) ([]Chunk, error)

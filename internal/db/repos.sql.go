@@ -93,6 +93,28 @@ func (q *Queries) GetRepoByPath(ctx context.Context, path string) (Repository, e
 	return i, err
 }
 
+const getRepoByName = `-- name: GetRepoByName :one
+SELECT id, path, name, remote_url, status, last_indexed_at, file_count, created_at, updated_at FROM repositories
+WHERE name = ?
+`
+
+func (q *Queries) GetRepoByName(ctx context.Context, name string) (Repository, error) {
+	row := q.db.QueryRowContext(ctx, getRepoByName, name)
+	var i Repository
+	err := row.Scan(
+		&i.ID,
+		&i.Path,
+		&i.Name,
+		&i.RemoteUrl,
+		&i.Status,
+		&i.LastIndexedAt,
+		&i.FileCount,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getStats = `-- name: GetStats :one
 SELECT
   (SELECT COUNT(*) FROM repositories) AS repo_count,

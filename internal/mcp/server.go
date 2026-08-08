@@ -83,6 +83,10 @@ func (s *Server) registerTools() {
 	s.tools["get_architecture"] = s.handleGetArchitecture
 	s.tools["trace_dependency"] = s.handleTraceDependency
 	s.tools["get_file_tree"] = s.handleGetFileTree
+	s.tools["get_recent_commits"] = s.handleGetRecentCommits
+	s.tools["get_file_history"] = s.handleGetFileHistory
+	s.tools["get_blame"] = s.handleGetBlame
+	s.tools["get_diff"] = s.handleGetDiff
 }
 
 func (s *Server) registerResources() {
@@ -378,6 +382,59 @@ func (s *Server) handleToolsList(ctx context.Context, req JSONRPCRequest) {
 				"properties": {
 					"repo_name": {"type": "string", "description": "Repository name"},
 					"path": {"type": "string", "description": "Optional directory path (defaults to root)"}
+				},
+				"required": ["repo_name"]
+			}`),
+		},
+		{
+			Name:        "get_recent_commits",
+			Description: "Get recent git commits from a repository. Returns hash, date, author, email, and subject for each commit.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"repo_name": {"type": "string", "description": "Repository name"},
+					"max": {"type": "integer", "description": "Maximum commits to return (default 20)", "default": 20}
+				},
+				"required": ["repo_name"]
+			}`),
+		},
+		{
+			Name:        "get_file_history",
+			Description: "Get git commit history for a specific file, following renames. Returns hash, date, author, and subject for each commit touching the file.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"repo_name": {"type": "string", "description": "Repository name"},
+					"path": {"type": "string", "description": "File path relative to repository root"},
+					"max": {"type": "integer", "description": "Maximum commits to return (default 20)", "default": 20}
+				},
+				"required": ["repo_name", "path"]
+			}`),
+		},
+		{
+			Name:        "get_blame",
+			Description: "Get git blame (per-line authorship) for a file or a line range. Shows which commit and author last touched each line.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"repo_name": {"type": "string", "description": "Repository name"},
+					"path": {"type": "string", "description": "File path relative to repository root"},
+					"start_line": {"type": "integer", "description": "Optional start line for a range"},
+					"end_line": {"type": "integer", "description": "Optional end line for a range"}
+				},
+				"required": ["repo_name", "path"]
+			}`),
+		},
+		{
+			Name:        "get_diff",
+			Description: "Get the git diff between two refs (commits, branches, or tags) in a repository. Returns a stat summary plus the full patch.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"repo_name": {"type": "string", "description": "Repository name"},
+					"base": {"type": "string", "description": "Base ref (default HEAD~1)"},
+					"head": {"type": "string", "description": "Head ref (default HEAD)"},
+					"max_stat": {"type": "integer", "description": "Max width for the stat summary (default 120)", "default": 120}
 				},
 				"required": ["repo_name"]
 			}`),
