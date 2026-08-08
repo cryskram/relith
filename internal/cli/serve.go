@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -14,6 +15,7 @@ import (
 	"github.com/cryskram/relith/internal/app"
 	"github.com/cryskram/relith/internal/config"
 	"github.com/cryskram/relith/internal/daemon"
+	"github.com/cryskram/relith/internal/db"
 	"github.com/cryskram/relith/internal/tui"
 )
 
@@ -61,7 +63,26 @@ func serveTUI(application *app.App, d *daemon.Daemon, addr string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := tui.NewServerModel(addr)
+	if err := openServeDB(ctx, application); err != nil {
+		return err
+	}
+
+	q := db.New(application.DB)
+	fetch := func(ctx context.Context) (tui.ServerStats, error) {
+		stats, err := q.GetStats(ctx)
+		if err != nil {
+			return tui.ServerStats{}, err
+		}
+		return tui.ServerStats{
+			Repos:   stats.RepoCount,
+			Files:   stats.DocCount,
+			Chunks:  stats.ChunkCount,
+			Symbols: stats.SymbolCount,
+			Refs:    stats.RefCount,
+		}, nil
+	}
+
+	m := tui.NewServerModel(addr, fetch)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -85,6 +106,26 @@ func serveTUI(application *app.App, d *daemon.Daemon, addr string) error {
 	default:
 	}
 
+	return nil
+}
+
+func openServeDB(ctx context.Context, application *app.App) error {
+	if application.DB != nil {
+		return nil
+	}
+
+	dbPath := filepath.Join(application.Config.Core.DataDir, "relith.db")
+	database, err := db.Open(dbPath)
+	if err != nil {
+		return fmt.Errorf("open db: %w", err)
+	}
+
+	if err := db.Migrate(ctx, database); err != nil {
+		database.Close()
+		return fmt.Errorf("migrate: %w", err)
+	}
+
+	application.DB = database
 	return nil
 }
 

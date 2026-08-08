@@ -87,6 +87,9 @@ func (d *Daemon) initDataDir() error {
 }
 
 func (d *Daemon) openDB() error {
+	if d.app.DB != nil {
+		return nil
+	}
 	path := filepath.Join(d.app.Config.Core.DataDir, "relith.db")
 	database, err := db.Open(path)
 	if err != nil {

@@ -1,33 +1,64 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-type ServerModel struct {
-	spinner spinner.Model
-	addr    string
-	started time.Time
-	done    bool
+type ServerStats struct {
+	Repos   int64
+	Files   int64
+	Chunks  int64
+	Symbols int64
+	Refs    int64
 }
 
-func NewServerModel(addr string) ServerModel {
-	s := spinner.New()
-	s.Style = spinnerStyle
-	s.Spinner = spinner.Dot
+type StatsFunc func(ctx context.Context) (ServerStats, error)
+
+type ServerModel struct {
+	addr    string
+	started time.Time
+	fetch   StatsFunc
+	stats   ServerStats
+	has     bool
+	err     string
+}
+
+func NewServerModel(addr string, fetch StatsFunc) ServerModel {
 	return ServerModel{
-		spinner: s,
 		addr:    addr,
 		started: time.Now(),
+		fetch:   fetch,
 	}
 }
 
 func (m ServerModel) Init() tea.Cmd {
-	return m.spinner.Tick
+	return m.refreshCmd(0)
+}
+
+func (m ServerModel) refreshCmd(delay time.Duration) tea.Cmd {
+	return tea.Tick(delay, func(time.Time) tea.Msg {
+		return statsMsg(fetchStats(m.fetch))
+	})
+}
+
+func fetchStats(fetch StatsFunc) statsMsg {
+	if fetch == nil {
+		return statsMsg{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	defer cancel()
+	s, err := fetch(ctx)
+	return statsMsg{s, err}
+}
+
+type statsMsg struct {
+	stats ServerStats
+	err   error
 }
 
 func (m ServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -37,45 +68,89 @@ func (m ServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
-			m.done = true
 			return m, tea.Quit
 		}
 		return m, nil
 
-	case spinner.TickMsg:
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
+	case statsMsg:
+		if msg.err != nil {
+			m.err = msg.err.Error()
+		} else {
+			m.stats = msg.stats
+			m.has = true
+			m.err = ""
+		}
+		return m, m.refreshCmd(time.Second * 2)
 	}
 
 	return m, nil
 }
 
 func (m ServerModel) View() string {
-	if m.done {
-		return ""
-	}
-
 	uptime := time.Since(m.started).Round(time.Second)
 
-	url := fmt.Sprintf("http://%s", m.addr)
+	rows := []struct {
+		label string
+		value string
+	}{
+		{"Repositories", humanInt(m.stats.Repos)},
+		{"Files", humanInt(m.stats.Files)},
+		{"Chunks", humanInt(m.stats.Chunks)},
+		{"Symbols", humanInt(m.stats.Symbols)},
+		{"References", humanInt(m.stats.Refs)},
+	}
 
-	content := fmt.Sprintf("\n  %s  %s\n\n",
-		m.spinner.View(),
-		TitleStyle.Render("Relith Server"))
+	placeholder := ""
+	if !m.has {
+		placeholder = "…"
+	}
 
-	content += BoxStyle.Render(
-		fmt.Sprintf("  %s\n\n  %s\n\n  %s  %s\n",
-			HighlightStyle.Render("Dashboard & API"),
-			InfoStyle.Render(url),
-			MutedStyle.Render("uptime"),
-			SuccessStyle.Render(uptime.String()),
-		),
-	)
+	maxLabel := 0
+	for _, r := range rows {
+		if len(r.label) > maxLabel {
+			maxLabel = len(r.label)
+		}
+	}
 
-	content += fmt.Sprintf("\n  %s\n", MutedStyle.Render("Press Ctrl+C to stop"))
+	var body strings.Builder
+	body.WriteString(fmt.Sprintf("  %s  %s\n\n", SuccessStyle.Render("●"), TitleStyle.Render("Relith server")))
+	url := "http://" + m.addr
+	if m.err != "" {
+		body.WriteString(ErrorStyle.Render("  "+url) + "  " + MutedStyle.Render(m.err) + "\n\n")
+	} else {
+		body.WriteString(InfoStyle.Render("  " + hyperlink(url, m.addr)) + "\n\n")
+	}
 
-	return content
+	for _, r := range rows {
+		val := r.value
+		if placeholder != "" {
+			val = placeholder
+		}
+		fmt.Fprintf(&body, "  %-*s  %s\n", maxLabel, r.label, InfoStyle.Render(val))
+	}
+
+	body.WriteString("\n  " + MutedStyle.Render(fmt.Sprintf("uptime %s · press Ctrl+C to stop", uptime.String())) + "\n")
+
+	return body.String()
+}
+
+func hyperlink(url, text string) string {
+	return "\x1b]8;;" + url + "\x1b\\" + text + "\x1b]8;;\x1b\\"
+}
+
+func humanInt(n int64) string {
+	s := fmt.Sprintf("%d", n)
+	if n < 1000 {
+		return s
+	}
+	var out []byte
+	for i, c := range []byte(s) {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			out = append(out, ',')
+		}
+		out = append(out, c)
+	}
+	return string(out)
 }
 
 var _ tea.Model = ServerModel{}
