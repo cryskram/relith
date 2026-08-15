@@ -1,0 +1,15 @@
+.git
+bin/
+dist/
+build/
+data/
+tmp/
+coverage.out
+coverage.html
+*.db
+*.db-shm
+*.db-wal
+.idea/
+.vscode/
+Dockerfile
+.dockerignore

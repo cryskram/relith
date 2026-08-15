@@ -23,7 +23,7 @@ Instead of every AI tool building its own isolated context, Relith is a **shared
 ## Why Relith?
 
 - **One index, every AI.** Every AI tool asks the same questions of your codebase. Relith builds the context once and serves every MCP client from the same index - no per-tool re-indexing, no duplicated state.
-- **Local-first by default.** A single static Go binary. No Docker, no npm/pip, no runtime, no cloud account. Your code never leaves your machine.
+- **Local-first by default.** One self-contained download, no runtime or cloud account required. Docker is optional - a container image is included for those who want it. Your code never leaves your machine.
 - **Beyond grep.** Search only finds strings. Relith also answers *where is this used*, *what calls this*, *how do these files relate*, and *when, why, and who changed this line* - via symbols, references, a dependency graph, and git-aware tools.
 - **Zero glue code.** Speak the Model Context Protocol over stdio and your tools show up in any MCP-compatible agent automatically.
 
@@ -38,7 +38,7 @@ Instead of every AI tool building its own isolated context, Relith is a **shared
 | **Git-aware context** | No | No | Yes (hosted) | Yes (commits, history, blame, diffs) |
 | **MCP-native** | No | No | Yes (Enterprise instance) | Yes, local stdio |
 | **Data locality** | Local | Local | SaaS or self-host | Local |
-| **Setup** | One binary | One binary | Instance + account | One binary |
+| **Setup** | One binary | One binary | Instance + account | Tarball + one-liner install |
 
 ## Features
 
@@ -51,7 +51,7 @@ Instead of every AI tool building its own isolated context, Relith is a **shared
 - **Self-healing watcher** - auto-reindexes changed files via fsnotify
 - **Terminal UI** - Bubble Tea progress bars, spinners, and a server dashboard
 - **REST API** - HTTP server for scripts, CI pipelines, and programmatic access
-- **One binary, local-first** - Go, no npm/pip/uv, no Docker, no runtime, your code never leaves your machine
+- **Local-first, zero runtime** - static Go binaries in one download, no npm/pip/uv, no runtime, Docker optional, your code never leaves your machine
 
 ### Performance
 
@@ -63,11 +63,16 @@ Linux kernel, 94,989 files, 1.7M chunks:
 | Graph build | 1m 8s |
 | **Total** | **15m 48s** |
 
+Reproduce it on your machine with [`bench/index-kernel.sh`](bench/index-kernel.sh) - see [docs/benchmarks.md](docs/benchmarks.md).
+
 ## Quick Start
 
 ```bash
 git clone https://github.com/cryskram/relith.git && cd relith
 make build-all
+
+# ...or install the latest release:
+curl -fsSL https://raw.githubusercontent.com/cryskram/relith/main/install.sh | sh
 
 ./bin/relith repo add /path/to/your/project
 ./bin/relith index
@@ -183,3 +188,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
 ## License
 
 MIT - see [LICENSE](LICENSE).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev setup and contribution workflow. Security issues: see [SECURITY.md](SECURITY.md).

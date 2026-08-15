@@ -284,7 +284,7 @@
         renderRepos(repos)
       } catch (e) {
         $('repo-loading').classList.add('hidden')
-        $('repo-list').innerHTML = '<div class="text-center py-8 text-gray-600 text-sm">Could not load repositories — ' + escapeHtml(e.message) + '</div>'
+        $('repo-list').innerHTML = '<div class="text-center py-8 text-gray-600 text-sm">Could not load repositories - ' + escapeHtml(e.message) + '</div>'
       }
     }
 
