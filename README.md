@@ -75,6 +75,9 @@ make build-all
 curl -fsSL https://raw.githubusercontent.com/cryskram/relith/main/install.sh | sh
 # On Windows, run the same command from Git Bash / MSYS2.
 
+# ...and to uninstall (add --purge to also delete the index database and config):
+curl -fsSL https://raw.githubusercontent.com/cryskram/relith/main/uninstall.sh | sh
+
 ./bin/relith repo add /path/to/your/project
 ./bin/relith index
 ./bin/relith search "your query"
