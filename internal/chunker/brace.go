@@ -6,10 +6,10 @@ import (
 )
 
 var (
-	braceClassPat   = regexp.MustCompile(`(?i)\b(class|struct|interface|trait|enum)\s+([A-Za-z_]\w*)`)
-	braceFnPat      = regexp.MustCompile(`(?i)(?:async\s+)?(?:function\s*\*?\s*)([A-Za-z_]\w*)\s*\(`)
-	braceMethodPat  = regexp.MustCompile(`(?i)^\s*(?:get|set)\s+([A-Za-z_]\w*)\s*\(`)
-	braceArrowPat   = regexp.MustCompile(`(?i)(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*(?:async\s*)?(?:\(|$)`)
+	braceClassPat    = regexp.MustCompile(`(?i)\b(class|struct|interface|trait|enum)\s+([A-Za-z_]\w*)`)
+	braceFnPat       = regexp.MustCompile(`(?i)(?:async\s+)?(?:function\s*\*?\s*)([A-Za-z_]\w*)\s*\(`)
+	braceMethodPat   = regexp.MustCompile(`(?i)^\s*(?:get|set)\s+([A-Za-z_]\w*)\s*\(`)
+	braceArrowPat    = regexp.MustCompile(`(?i)(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*(?:async\s*)?(?:\(|$)`)
 	braceRustImplPat = regexp.MustCompile(`(?i)impl\s+([A-Za-z_]\w*)`)
 	braceRustFnPat   = regexp.MustCompile(`(?i)(?:pub\s+)?(?:unsafe\s+)?fn\s+([A-Za-z_]\w*)`)
 

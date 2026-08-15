@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
 	"log/slog"
 
@@ -582,11 +581,4 @@ func intParam(params map[string]any, key string, defaultVal int) int {
 		return defaultVal
 	}
 	return int(v)
-}
-
-func resolveRepoPath(repoPath, docPath string) string {
-	if filepath.IsAbs(docPath) {
-		return docPath
-	}
-	return filepath.Join(repoPath, docPath)
 }

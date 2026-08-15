@@ -111,7 +111,7 @@ func TestValidateClamps(t *testing.T) {
 }
 
 func TestConfigFilePath(t *testing.T) {
-	path, err := ConfigFilePath()
+	path, err := FilePath()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

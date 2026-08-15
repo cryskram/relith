@@ -104,12 +104,13 @@ func PythonChunker(content string) []Chunk {
 func countIndent(line string) int {
 	count := 0
 	for _, ch := range line {
-		if ch == ' ' {
+		switch ch {
+		case ' ':
 			count++
-		} else if ch == '\t' {
+		case '\t':
 			count += 4
-		} else {
-			break
+		default:
+			return count
 		}
 		if !unicode.IsSpace(ch) {
 			break

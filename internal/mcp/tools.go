@@ -70,14 +70,14 @@ func (s *Server) handleSearchCode(ctx context.Context, params map[string]any) Ca
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Found %d result(s):\n\n", len(filtered)))
+	fmt.Fprintf(&sb, "Found %d result(s):\n\n", len(filtered))
 	for i, r := range filtered {
-		sb.WriteString(fmt.Sprintf("--- Result %d ---\n", i+1))
-		sb.WriteString(fmt.Sprintf("Repo: %s\n", r.RepoName))
-		sb.WriteString(fmt.Sprintf("File: %s\n", r.Path))
-		sb.WriteString(fmt.Sprintf("Language: %s\n", r.Language))
-		sb.WriteString(fmt.Sprintf("Score: %.2f\n", r.Score))
-		sb.WriteString(fmt.Sprintf("Content:\n%s\n\n", r.Content))
+		fmt.Fprintf(&sb, "--- Result %d ---\n", i+1)
+		fmt.Fprintf(&sb, "Repo: %s\n", r.RepoName)
+		fmt.Fprintf(&sb, "File: %s\n", r.Path)
+		fmt.Fprintf(&sb, "Language: %s\n", r.Language)
+		fmt.Fprintf(&sb, "Score: %.2f\n", r.Score)
+		fmt.Fprintf(&sb, "Content:\n%s\n\n", r.Content)
 	}
 
 	return s.textContent(sb.String())
@@ -144,13 +144,13 @@ func (s *Server) handleFindReferences(ctx context.Context, params map[string]any
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Found %d reference(s) to %q:\n\n", len(rows), name))
+	fmt.Fprintf(&sb, "Found %d reference(s) to %q:\n\n", len(rows), name)
 	for i, r := range rows {
-		sb.WriteString(fmt.Sprintf("--- %d ---\n", i+1))
-		sb.WriteString(fmt.Sprintf("Context: %s\n", r.Context))
-		sb.WriteString(fmt.Sprintf("File:   %s\n", r.Path))
-		sb.WriteString(fmt.Sprintf("Repo:   %s\n", r.RepoName))
-		sb.WriteString(fmt.Sprintf("Line:   %d : %d\n\n", r.Line, r.Col))
+		fmt.Fprintf(&sb, "--- %d ---\n", i+1)
+		fmt.Fprintf(&sb, "Context: %s\n", r.Context)
+		fmt.Fprintf(&sb, "File:   %s\n", r.Path)
+		fmt.Fprintf(&sb, "Repo:   %s\n", r.RepoName)
+		fmt.Fprintf(&sb, "Line:   %d : %d\n\n", r.Line, r.Col)
 	}
 
 	return s.textContent(sb.String())
@@ -238,17 +238,17 @@ func (s *Server) handleGetFileOutline(ctx context.Context, params map[string]any
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("File Outline: %s/%s\n", repo.Name, doc.Path))
-	sb.WriteString(fmt.Sprintf("Language: %s\n", doc.Language.String))
-	sb.WriteString(fmt.Sprintf("Size: %d bytes\n", doc.Size))
-	sb.WriteString(fmt.Sprintf("Chunks: %d\n\n", len(chunks)))
+	fmt.Fprintf(&sb, "File Outline: %s/%s\n", repo.Name, doc.Path)
+	fmt.Fprintf(&sb, "Language: %s\n", doc.Language.String)
+	fmt.Fprintf(&sb, "Size: %d bytes\n", doc.Size)
+	fmt.Fprintf(&sb, "Chunks: %d\n\n", len(chunks))
 
 	sb.WriteString("Symbols:\n")
 	if len(symbols) == 0 {
 		sb.WriteString("  (none)\n")
 	} else {
 		for _, sym := range symbols {
-			sb.WriteString(fmt.Sprintf("  - %s (%s) at %d:%d\n", sym.Name, sym.Kind, sym.Line, sym.Col))
+			fmt.Fprintf(&sb, "  - %s (%s) at %d:%d\n", sym.Name, sym.Kind, sym.Line, sym.Col)
 		}
 	}
 
@@ -257,7 +257,7 @@ func (s *Server) handleGetFileOutline(ctx context.Context, params map[string]any
 		sb.WriteString("  (none)\n")
 	} else {
 		for _, r := range refs {
-			sb.WriteString(fmt.Sprintf("  - %s at %d:%d\n    %s\n", r.Name, r.Line, r.Col, r.Context))
+			fmt.Fprintf(&sb, "  - %s at %d:%d\n    %s\n", r.Name, r.Line, r.Col, r.Context)
 		}
 	}
 
@@ -338,14 +338,14 @@ func (s *Server) handleGetSymbolDefinition(ctx context.Context, params map[strin
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Symbol definition(s) for %q:\n\n", name))
+	fmt.Fprintf(&sb, "Symbol definition(s) for %q:\n\n", name)
 	for i, d := range defs {
-		sb.WriteString(fmt.Sprintf("--- %d ---\n", i+1))
-		sb.WriteString(fmt.Sprintf("Repo:   %s\n", d.Repo))
-		sb.WriteString(fmt.Sprintf("File:   %s\n", d.Path))
-		sb.WriteString(fmt.Sprintf("Kind:   %s\n", d.Kind))
-		sb.WriteString(fmt.Sprintf("Line:   %d:%d\n", d.Line, d.Col))
-		sb.WriteString(fmt.Sprintf("Snippet:\n%s\n\n", d.Snippet))
+		fmt.Fprintf(&sb, "--- %d ---\n", i+1)
+		fmt.Fprintf(&sb, "Repo:   %s\n", d.Repo)
+		fmt.Fprintf(&sb, "File:   %s\n", d.Path)
+		fmt.Fprintf(&sb, "Kind:   %s\n", d.Kind)
+		fmt.Fprintf(&sb, "Line:   %d:%d\n", d.Line, d.Col)
+		fmt.Fprintf(&sb, "Snippet:\n%s\n\n", d.Snippet)
 	}
 	return s.textContent(sb.String())
 }
@@ -368,7 +368,7 @@ func (s *Server) handleFindCallees(ctx context.Context, params map[string]any) C
 		Count int64
 	}
 	var out strings.Builder
-	out.WriteString(fmt.Sprintf("Callees for %q:\n\n", name))
+	fmt.Fprintf(&out, "Callees for %q:\n\n", name)
 	printedAny := false
 	for _, sym := range rows {
 		if sym.Name != name {
@@ -401,9 +401,9 @@ func (s *Server) handleFindCallees(ctx context.Context, params map[string]any) C
 		}
 
 		printedAny = true
-		out.WriteString(fmt.Sprintf("Definition: %s/%s (%s) %d:%d\n", sym.RepoName, sym.Path, sym.Kind, sym.Line, sym.Col))
+		fmt.Fprintf(&out, "Definition: %s/%s (%s) %d:%d\n", sym.RepoName, sym.Path, sym.Kind, sym.Line, sym.Col)
 		for i, c := range callees {
-			out.WriteString(fmt.Sprintf("  %d. %s (%d)\n", i+1, c.Name, c.Count))
+			fmt.Fprintf(&out, "  %d. %s (%d)\n", i+1, c.Name, c.Count)
 		}
 		out.WriteString("\n")
 	}
@@ -464,13 +464,13 @@ WHERE r.name = ?`
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Callers for %q:\n\n", name))
+	fmt.Fprintf(&sb, "Callers for %q:\n\n", name)
 	for i, c := range callers {
-		sb.WriteString(fmt.Sprintf("--- %d ---\n", i+1))
-		sb.WriteString(fmt.Sprintf("Repo:   %s\n", c.RepoName))
-		sb.WriteString(fmt.Sprintf("File:   %s\n", c.Path))
-		sb.WriteString(fmt.Sprintf("Line:   %d:%d\n", c.Line, c.Col))
-		sb.WriteString(fmt.Sprintf("Context: %s\n\n", c.Context))
+		fmt.Fprintf(&sb, "--- %d ---\n", i+1)
+		fmt.Fprintf(&sb, "Repo:   %s\n", c.RepoName)
+		fmt.Fprintf(&sb, "File:   %s\n", c.Path)
+		fmt.Fprintf(&sb, "Line:   %d:%d\n", c.Line, c.Col)
+		fmt.Fprintf(&sb, "Context: %s\n\n", c.Context)
 	}
 	return s.textContent(sb.String())
 }
@@ -527,15 +527,15 @@ func (s *Server) handleGetRelatedFiles(ctx context.Context, params map[string]an
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Related files for %s/%s:\n\n", repo.Name, doc.Path))
+	fmt.Fprintf(&sb, "Related files for %s/%s:\n\n", repo.Name, doc.Path)
 	if len(relatedFiles) == 0 {
 		sb.WriteString("  (none)\n")
 		return s.textContent(sb.String())
 	}
 	for i, r := range relatedFiles {
-		sb.WriteString(fmt.Sprintf("--- %d ---\n", i+1))
-		sb.WriteString(fmt.Sprintf("Path:   %s\n", r.Path))
-		sb.WriteString(fmt.Sprintf("Weight: %d\n\n", r.Weight))
+		fmt.Fprintf(&sb, "--- %d ---\n", i+1)
+		fmt.Fprintf(&sb, "Path:   %s\n", r.Path)
+		fmt.Fprintf(&sb, "Weight: %d\n\n", r.Weight)
 	}
 	return s.textContent(sb.String())
 }
@@ -602,10 +602,10 @@ func (s *Server) handleListHubFiles(ctx context.Context, params map[string]any) 
 	var sb strings.Builder
 	sb.WriteString("Hub files:\n\n")
 	for i, h := range hubs {
-		sb.WriteString(fmt.Sprintf("--- %d ---\n", i+1))
-		sb.WriteString(fmt.Sprintf("Repo:   %s\n", h.RepoName))
-		sb.WriteString(fmt.Sprintf("Path:   %s\n", h.Path))
-		sb.WriteString(fmt.Sprintf("Degree: %d\n\n", h.Degree))
+		fmt.Fprintf(&sb, "--- %d ---\n", i+1)
+		fmt.Fprintf(&sb, "Repo:   %s\n", h.RepoName)
+		fmt.Fprintf(&sb, "Path:   %s\n", h.Path)
+		fmt.Fprintf(&sb, "Degree: %d\n\n", h.Degree)
 	}
 	if len(hubs) == 0 {
 		sb.WriteString("  (none)\n")
@@ -662,11 +662,11 @@ func (s *Server) handleGetFileContent(ctx context.Context, params map[string]any
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("File: %s\n", doc.Path))
-	sb.WriteString(fmt.Sprintf("Size: %d bytes\n", doc.Size))
-	sb.WriteString(fmt.Sprintf("Language: %s\n", doc.Language.String))
-	sb.WriteString(fmt.Sprintf("Hash: %s\n", doc.Hash))
-	sb.WriteString(fmt.Sprintf("Modified: %s\n\n", doc.ModTime.Format("2006-01-02 15:04:05")))
+	fmt.Fprintf(&sb, "File: %s\n", doc.Path)
+	fmt.Fprintf(&sb, "Size: %d bytes\n", doc.Size)
+	fmt.Fprintf(&sb, "Language: %s\n", doc.Language.String)
+	fmt.Fprintf(&sb, "Hash: %s\n", doc.Hash)
+	fmt.Fprintf(&sb, "Modified: %s\n\n", doc.ModTime.Format("2006-01-02 15:04:05"))
 	sb.WriteString(content)
 
 	return s.textContent(sb.String())
@@ -707,7 +707,7 @@ func lineWindow(content string, line, radius int) string {
 		if i == line-1 {
 			prefix = ">"
 		}
-		sb.WriteString(fmt.Sprintf("%s %4d | %s\n", prefix, i+1, lines[i]))
+		fmt.Fprintf(&sb, "%s %4d | %s\n", prefix, i+1, lines[i])
 	}
 	return sb.String()
 }
@@ -723,18 +723,18 @@ func (s *Server) handleListRepos(ctx context.Context, params map[string]any) Cal
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Tracked repositories (%d):\n\n", len(repos)))
+	fmt.Fprintf(&sb, "Tracked repositories (%d):\n\n", len(repos))
 	for _, r := range repos {
 		lastIndexed := "never"
 		if r.LastIndexedAt.Valid {
 			lastIndexed = r.LastIndexedAt.Time.Format("2006-01-02 15:04:05")
 		}
-		sb.WriteString(fmt.Sprintf("  ID:      %d\n", r.ID))
-		sb.WriteString(fmt.Sprintf("  Name:    %s\n", r.Name))
-		sb.WriteString(fmt.Sprintf("  Path:    %s\n", r.Path))
-		sb.WriteString(fmt.Sprintf("  Status:  %s\n", r.Status))
-		sb.WriteString(fmt.Sprintf("  Files:   %d\n", r.FileCount))
-		sb.WriteString(fmt.Sprintf("  Indexed: %s\n", lastIndexed))
+		fmt.Fprintf(&sb, "  ID:      %d\n", r.ID)
+		fmt.Fprintf(&sb, "  Name:    %s\n", r.Name)
+		fmt.Fprintf(&sb, "  Path:    %s\n", r.Path)
+		fmt.Fprintf(&sb, "  Status:  %s\n", r.Status)
+		fmt.Fprintf(&sb, "  Files:   %d\n", r.FileCount)
+		fmt.Fprintf(&sb, "  Indexed: %s\n", lastIndexed)
 		sb.WriteString("\n")
 	}
 
@@ -770,11 +770,7 @@ func (s *Server) handleFindSymbol(ctx context.Context, params map[string]any) Ca
 			return s.errorContent(fmt.Sprintf("search symbols failed: %v", qErr))
 		}
 		for _, r := range data {
-			rows = append(rows, db.FindSymbolsByNameRow{
-				ID: r.ID, DocID: r.DocID, Name: r.Name,
-				Kind: r.Kind, Line: r.Line, Col: r.Col,
-				Path: r.Path, RepoID: r.RepoID, RepoName: r.RepoName,
-			})
+			rows = append(rows, db.FindSymbolsByNameRow(r))
 		}
 	case repoName != "":
 		data, qErr := s.queries.FindSymbolsByRepo(ctx, db.FindSymbolsByRepoParams{
@@ -785,11 +781,7 @@ func (s *Server) handleFindSymbol(ctx context.Context, params map[string]any) Ca
 			return s.errorContent(fmt.Sprintf("search symbols failed: %v", qErr))
 		}
 		for _, r := range data {
-			rows = append(rows, db.FindSymbolsByNameRow{
-				ID: r.ID, DocID: r.DocID, Name: r.Name,
-				Kind: r.Kind, Line: r.Line, Col: r.Col,
-				Path: r.Path, RepoID: r.RepoID, RepoName: r.RepoName,
-			})
+			rows = append(rows, db.FindSymbolsByNameRow(r))
 		}
 	case kind != "":
 		data, qErr := s.queries.FindSymbolsByNameAndKind(ctx, db.FindSymbolsByNameAndKindParams{
@@ -800,11 +792,7 @@ func (s *Server) handleFindSymbol(ctx context.Context, params map[string]any) Ca
 			return s.errorContent(fmt.Sprintf("search symbols failed: %v", qErr))
 		}
 		for _, r := range data {
-			rows = append(rows, db.FindSymbolsByNameRow{
-				ID: r.ID, DocID: r.DocID, Name: r.Name,
-				Kind: r.Kind, Line: r.Line, Col: r.Col,
-				Path: r.Path, RepoID: r.RepoID, RepoName: r.RepoName,
-			})
+			rows = append(rows, db.FindSymbolsByNameRow(r))
 		}
 	default:
 		var qErr error
@@ -819,15 +807,15 @@ func (s *Server) handleFindSymbol(ctx context.Context, params map[string]any) Ca
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Found %d symbol(s) matching %q:\n\n", len(rows), name))
+	fmt.Fprintf(&sb, "Found %d symbol(s) matching %q:\n\n", len(rows), name)
 	for i, r := range rows {
-		sb.WriteString(fmt.Sprintf("--- %d ---\n", i+1))
-		sb.WriteString(fmt.Sprintf("Name:     %s\n", r.Name))
-		sb.WriteString(fmt.Sprintf("Kind:     %s\n", r.Kind))
-		sb.WriteString(fmt.Sprintf("File:     %s\n", r.Path))
-		sb.WriteString(fmt.Sprintf("Repo:     %s\n", r.RepoName))
-		sb.WriteString(fmt.Sprintf("Line:     %d\n", r.Line))
-		sb.WriteString(fmt.Sprintf("Column:   %d\n\n", r.Col))
+		fmt.Fprintf(&sb, "--- %d ---\n", i+1)
+		fmt.Fprintf(&sb, "Name:     %s\n", r.Name)
+		fmt.Fprintf(&sb, "Kind:     %s\n", r.Kind)
+		fmt.Fprintf(&sb, "File:     %s\n", r.Path)
+		fmt.Fprintf(&sb, "Repo:     %s\n", r.RepoName)
+		fmt.Fprintf(&sb, "Line:     %d\n", r.Line)
+		fmt.Fprintf(&sb, "Column:   %d\n\n", r.Col)
 	}
 
 	return s.textContent(sb.String())
@@ -894,12 +882,12 @@ func (s *Server) handleGetRepoSummary(ctx context.Context, params map[string]any
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Repository: %s\n", repo.Name))
-	sb.WriteString(fmt.Sprintf("  Path:         %s\n", repo.Path))
-	sb.WriteString(fmt.Sprintf("  Status:       %s\n", repo.Status))
-	sb.WriteString(fmt.Sprintf("  Files:        %d\n", repo.FileCount))
-	sb.WriteString(fmt.Sprintf("  Total Chunks: %d\n", totalChunks))
-	sb.WriteString(fmt.Sprintf("  Last Indexed: %s\n", lastIndexed))
+	fmt.Fprintf(&sb, "Repository: %s\n", repo.Name)
+	fmt.Fprintf(&sb, "  Path:         %s\n", repo.Path)
+	fmt.Fprintf(&sb, "  Status:       %s\n", repo.Status)
+	fmt.Fprintf(&sb, "  Files:        %d\n", repo.FileCount)
+	fmt.Fprintf(&sb, "  Total Chunks: %d\n", totalChunks)
+	fmt.Fprintf(&sb, "  Last Indexed: %s\n", lastIndexed)
 	sb.WriteString("\nLanguage Breakdown:\n")
 
 	total := len(docs)
@@ -908,7 +896,7 @@ func (s *Server) handleGetRepoSummary(ctx context.Context, params map[string]any
 	} else {
 		for lang, count := range langCount {
 			pct := float64(count) / float64(total) * 100
-			sb.WriteString(fmt.Sprintf("  %-15s %5d files (%5.1f%%)\n", lang+":", count, pct))
+			fmt.Fprintf(&sb, "  %-15s %5d files (%5.1f%%)\n", lang+":", count, pct)
 		}
 	}
 
@@ -968,7 +956,7 @@ func (s *Server) queryGraphNeighbors(ctx context.Context, repo db.Repository, pa
 	defer rows.Close()
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Neighbors of %s:\n\n", path))
+	fmt.Fprintf(&sb, "Neighbors of %s:\n\n", path)
 	count := 0
 	for rows.Next() {
 		var neighborID int64
@@ -978,8 +966,8 @@ func (s *Server) queryGraphNeighbors(ctx context.Context, repo db.Repository, pa
 			continue
 		}
 		var p string
-		s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, neighborID).Scan(&p)
-		sb.WriteString(fmt.Sprintf("  %s (weight=%d, kind=%s)\n", p, weight, kind))
+		_ = s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, neighborID).Scan(&p)
+		fmt.Fprintf(&sb, "  %s (weight=%d, kind=%s)\n", p, weight, kind)
 		count++
 	}
 	if count == 0 {
@@ -1001,7 +989,7 @@ func (s *Server) queryGraphHotspots(ctx context.Context, repo db.Repository, max
 	defer rows.Close()
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Hotspots (most connected files) for %s:\n\n", repo.Name))
+	fmt.Fprintf(&sb, "Hotspots (most connected files) for %s:\n\n", repo.Name)
 	count := 0
 	for rows.Next() {
 		var docID, cnt int64
@@ -1009,8 +997,8 @@ func (s *Server) queryGraphHotspots(ctx context.Context, repo db.Repository, max
 			continue
 		}
 		var p string
-		s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, docID).Scan(&p)
-		sb.WriteString(fmt.Sprintf("  %4d  %s\n", cnt, p))
+		_ = s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, docID).Scan(&p)
+		fmt.Fprintf(&sb, "  %4d  %s\n", cnt, p)
 		count++
 	}
 	if count == 0 {
@@ -1061,7 +1049,7 @@ func (s *Server) queryGraphPath(ctx context.Context, repo db.Repository, fromPat
 			}
 			if bfs(targetID, depth+1) {
 				var p string
-				s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, targetID).Scan(&p)
+				_ = s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, targetID).Scan(&p)
 				path = append([]string{p}, path...)
 				return true
 			}
@@ -1071,12 +1059,12 @@ func (s *Server) queryGraphPath(ctx context.Context, repo db.Repository, fromPat
 
 	if bfs(fromID, 0) {
 		var fromPathName string
-		s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, fromID).Scan(&fromPathName)
+		_ = s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, fromID).Scan(&fromPathName)
 		path = append([]string{fromPathName}, path...)
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Dependency path from %s to %s:\n\n", fromPath, toPath))
+	fmt.Fprintf(&sb, "Dependency path from %s to %s:\n\n", fromPath, toPath)
 	if len(path) == 0 {
 		sb.WriteString("  (no path found)\n")
 	} else {
@@ -1085,7 +1073,7 @@ func (s *Server) queryGraphPath(ctx context.Context, repo db.Repository, fromPat
 			if i < len(path)-1 {
 				arrow = "→ "
 			}
-			sb.WriteString(fmt.Sprintf("  %s %s\n", arrow, p))
+			fmt.Fprintf(&sb, "  %s %s\n", arrow, p)
 		}
 	}
 	return s.textContent(sb.String())
@@ -1149,8 +1137,8 @@ func (s *Server) handleGetArchitecture(ctx context.Context, params map[string]an
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Architecture overview for %s:\n\n", repoName))
-	sb.WriteString(fmt.Sprintf("Total files: %d\n\n", len(docs)))
+	fmt.Fprintf(&sb, "Architecture overview for %s:\n\n", repoName)
+	fmt.Fprintf(&sb, "Total files: %d\n\n", len(docs))
 
 	sb.WriteString("Languages:\n")
 	type langInfo struct {
@@ -1164,12 +1152,12 @@ func (s *Server) handleGetArchitecture(ctx context.Context, params map[string]an
 	sort.Slice(langs, func(i, j int) bool { return langs[i].count > langs[j].count })
 	for _, l := range langs {
 		pct := float64(l.count) / float64(len(docs)) * 100
-		sb.WriteString(fmt.Sprintf("  %-15s %5d files (%5.1f%%)\n", l.name+":", l.count, pct))
+		fmt.Fprintf(&sb, "  %-15s %5d files (%5.1f%%)\n", l.name+":", l.count, pct)
 	}
 
 	sb.WriteString("\nTop packages/directories:\n")
 	for _, p := range pkgs {
-		sb.WriteString(fmt.Sprintf("  %-30s %5d files\n", p.name, p.count))
+		fmt.Fprintf(&sb, "  %-30s %5d files\n", p.name, p.count)
 	}
 
 	hotRows, err := s.db.QueryContext(ctx, `
@@ -1193,7 +1181,7 @@ func (s *Server) handleGetArchitecture(ctx context.Context, params map[string]an
 				continue
 			}
 			hasHot = true
-			hotSb.WriteString(fmt.Sprintf("  %4d connections  %s\n", cnt, p))
+			fmt.Fprintf(&hotSb, "  %4d connections  %s\n", cnt, p)
 		}
 		if hasHot {
 			sb.WriteString(hotSb.String())
@@ -1218,7 +1206,7 @@ func (s *Server) handleGetArchitecture(ctx context.Context, params map[string]an
 				continue
 			}
 			hasEntry = true
-			entrySb.WriteString(fmt.Sprintf("  %4d imports  %s\n", cnt, p))
+			fmt.Fprintf(&entrySb, "  %4d imports  %s\n", cnt, p)
 		}
 		if hasEntry {
 			sb.WriteString(entrySb.String())
@@ -1280,7 +1268,7 @@ func (s *Server) handleTraceDependency(ctx context.Context, params map[string]an
 						continue
 					}
 					var p string
-					s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, tgtID).Scan(&p)
+					_ = s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, tgtID).Scan(&p)
 					if p == "" || seen[p] {
 						continue
 					}
@@ -1304,7 +1292,7 @@ func (s *Server) handleTraceDependency(ctx context.Context, params map[string]an
 						continue
 					}
 					var p string
-					s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, srcID).Scan(&p)
+					_ = s.db.QueryRowContext(ctx, `SELECT path FROM documents WHERE id = ?`, srcID).Scan(&p)
 					if p == "" || seen[p] {
 						continue
 					}
@@ -1321,13 +1309,13 @@ func (s *Server) handleTraceDependency(ctx context.Context, params map[string]an
 	walk(path, filepath.Dir(path), depth)
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Dependencies for %s (direction=%s, depth=%d):\n\n", path, direction, depth))
+	fmt.Fprintf(&sb, "Dependencies for %s (direction=%s, depth=%d):\n\n", path, direction, depth)
 	if len(allDeps) == 0 {
 		sb.WriteString("  (no dependencies found)\n")
 	} else {
 		for _, d := range allDeps {
 			indent := strings.Repeat("  ", d.level)
-			sb.WriteString(fmt.Sprintf("  %s%s [%s] (weight=%d)\n", indent, d.path, d.kind, d.weight))
+			fmt.Fprintf(&sb, "  %s%s [%s] (weight=%d)\n", indent, d.path, d.kind, d.weight)
 		}
 	}
 	return s.textContent(sb.String())
@@ -1397,13 +1385,13 @@ func (s *Server) handleGetFileTree(ctx context.Context, params map[string]any) C
 	sort.Slice(files, func(i, j int) bool { return files[i].name < files[j].name })
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("File Tree: %s/%s\n", repoName, prefix))
-	sb.WriteString(fmt.Sprintf("  %d directories, %d files\n\n", len(dirs), len(files)))
+	fmt.Fprintf(&sb, "File Tree: %s/%s\n", repoName, prefix)
+	fmt.Fprintf(&sb, "  %d directories, %d files\n\n", len(dirs), len(files))
 	for _, d := range dirs {
-		sb.WriteString(fmt.Sprintf("  [DIR]  %s/\n", d.name))
+		fmt.Fprintf(&sb, "  [DIR]  %s/\n", d.name)
 	}
 	for _, f := range files {
-		sb.WriteString(fmt.Sprintf("  [FILE] %s\n", f.name))
+		fmt.Fprintf(&sb, "  [FILE] %s\n", f.name)
 	}
 	return s.textContent(sb.String())
 }

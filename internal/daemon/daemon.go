@@ -19,12 +19,11 @@ import (
 type Daemon struct {
 	app    *app.App
 	apiSrv *api.Server
-	cancel context.CancelFunc
 }
 
-func New(app *app.App) *Daemon {
+func New(a *app.App) *Daemon {
 	return &Daemon{
-		app: app,
+		app: a,
 	}
 }
 

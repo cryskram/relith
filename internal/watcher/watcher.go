@@ -120,7 +120,9 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 	if event.Has(fsnotify.Create) {
 		info, err := os.Stat(event.Name)
 		if err == nil && info.IsDir() {
-			w.addTree(event.Name)
+			if err := w.addTree(event.Name); err != nil {
+				w.logger.Warn("add tree", "err", err, "dir", event.Name)
+			}
 		}
 	}
 

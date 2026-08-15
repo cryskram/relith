@@ -26,16 +26,15 @@ func RubyChunker(content string) []Chunk {
 }
 
 type rubyDecl struct {
-	line       int
-	endLine    int
-	name       string
-	kind       string
-	col        int
+	line    int
+	endLine int
+	name    string
+	kind    string
+	col     int
 }
 
 func findRubyDecls(lines []string) []rubyDecl {
 	var decls []rubyDecl
-	depth := 0
 	keywordStack := make([]string, 0)
 	i := 0
 	for i < len(lines) {
@@ -50,10 +49,6 @@ func findRubyDecls(lines []string) []rubyDecl {
 		if trimmed == "end" {
 			if len(keywordStack) > 0 {
 				keywordStack = keywordStack[:len(keywordStack)-1]
-				depth--
-				if depth < 0 {
-					depth = 0
-				}
 			}
 			i++
 			continue
@@ -62,10 +57,6 @@ func findRubyDecls(lines []string) []rubyDecl {
 		if strings.HasPrefix(trimmed, "end ") {
 			if len(keywordStack) > 0 {
 				keywordStack = keywordStack[:len(keywordStack)-1]
-				depth--
-				if depth < 0 {
-					depth = 0
-				}
 			}
 			i++
 			continue
@@ -95,7 +86,6 @@ func findRubyDecls(lines []string) []rubyDecl {
 				col = 0
 			}
 
-			depth++
 			keywordStack = append(keywordStack, kind)
 
 			endLine := len(lines) - 1
@@ -129,7 +119,6 @@ func findRubyDecls(lines []string) []rubyDecl {
 				col:     col,
 			})
 			i = endLine + 1
-			depth = 0
 			keywordStack = keywordStack[:0]
 			continue
 		}

@@ -16,7 +16,7 @@ func DeleteDocuments(ctx context.Context, db *sql.DB, repoID int64, docIDs []int
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	placeholders := make([]string, len(docIDs))
 	args := make([]interface{}, len(docIDs)+1)
@@ -70,7 +70,7 @@ func DeleteRepoWithData(ctx context.Context, db *sql.DB, repoID int64) error {
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM graph_edges WHERE repo_id = ?`, repoID); err != nil {
 		return fmt.Errorf("delete graph_edges: %w", err)

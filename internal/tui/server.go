@@ -113,12 +113,12 @@ func (m ServerModel) View() string {
 	}
 
 	var body strings.Builder
-	body.WriteString(fmt.Sprintf("  %s  %s\n\n", SuccessStyle.Render("●"), TitleStyle.Render("Relith server")))
+	fmt.Fprintf(&body, "  %s  %s\n\n", SuccessStyle.Render("●"), TitleStyle.Render("Relith server"))
 	url := "http://" + m.addr
 	if m.err != "" {
 		body.WriteString(ErrorStyle.Render("  "+url) + "  " + MutedStyle.Render(m.err) + "\n\n")
 	} else {
-		body.WriteString(InfoStyle.Render("  " + hyperlink(url, m.addr)) + "\n\n")
+		body.WriteString(InfoStyle.Render("  "+hyperlink(url, m.addr)) + "\n\n")
 	}
 
 	for _, r := range rows {

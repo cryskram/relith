@@ -26,11 +26,11 @@ func PHPChunker(content string) []Chunk {
 }
 
 type phpDecl struct {
-	line       int
-	endLine    int
-	name       string
-	kind       string
-	col        int
+	line    int
+	endLine int
+	name    string
+	kind    string
+	col     int
 }
 
 func findPHPDecls(lines []string) []phpDecl {

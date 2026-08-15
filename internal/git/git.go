@@ -33,15 +33,15 @@ func run(ctx context.Context, workdir string, args ...string) (string, error) {
 	return out.String(), nil
 }
 
-func RecentCommits(ctx context.Context, workdir string, max int) (string, error) {
+func RecentCommits(ctx context.Context, workdir string, limit int) (string, error) {
 	format := "%H%x1f%ai%x1f%an%x1f%ae%x1f%s%x1e"
-	args := []string{"log", "-n", itoa(max), "--pretty=format:" + format}
+	args := []string{"log", "-n", itoa(limit), "--pretty=format:" + format}
 	return run(ctx, workdir, args...)
 }
 
-func FileHistory(ctx context.Context, workdir, file string, max int) (string, error) {
+func FileHistory(ctx context.Context, workdir, file string, limit int) (string, error) {
 	format := "%H%x1f%ai%x1f%an%x1f%ae%x1f%s%x1e"
-	args := []string{"log", "-n", itoa(max), "--pretty=format:" + format, "--follow", "--", file}
+	args := []string{"log", "-n", itoa(limit), "--pretty=format:" + format, "--follow", "--", file}
 	return run(ctx, workdir, args...)
 }
 

@@ -250,12 +250,15 @@ def handler():
 		t.Errorf("expected function:handler, got %v", names)
 	}
 	// Decorator lines should be part of the declaration chunks, not separate
+	foundDecorator := false
 	for _, c := range chunks {
-		if c.Symbols != nil {
-			if strings.Contains(c.Content, "@dataclasses.dataclass") {
-				// good
-			}
+		if c.Symbols != nil && strings.Contains(c.Content, "@dataclasses.dataclass") {
+			foundDecorator = true
+			break
 		}
+	}
+	if !foundDecorator {
+		t.Errorf("expected decorator line to be part of a declaration chunk")
 	}
 }
 
@@ -446,11 +449,7 @@ public Response handle() {
 }
 `
 	chunks := BraceChunker(code)
-	names := symbolsOf(chunks)
-	// Chunks should exist, annotations shouldn't create fake declarations
-	if !contains(names, "function:toString") && !contains(names, "function:handle") {
-		// May not detect Java methods well
-	}
+	// May not detect Java methods well; rely on the chunk count assertion below.
 	if chunkCount(chunks) == 0 {
 		t.Errorf("expected some chunks, got 0")
 	}

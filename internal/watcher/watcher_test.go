@@ -90,8 +90,8 @@ func TestDebouncer_EmptyFire(t *testing.T) {
 
 func TestShouldSkip(t *testing.T) {
 	tests := []struct {
-		path  string
-		skip  bool
+		path string
+		skip bool
 	}{
 		{"main.go", false},
 		{".git/config", true},

@@ -47,10 +47,10 @@ need free disk space equal to the current database size.`,
 		// Check current free pages
 		var pageCount, freelistCount int
 		ctx := context.Background()
-		database.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount)
-		database.QueryRowContext(ctx, "PRAGMA freelist_count").Scan(&freelistCount)
+		_ = database.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount)
+		_ = database.QueryRowContext(ctx, "PRAGMA freelist_count").Scan(&freelistCount)
 		pageSize := 4096
-		database.QueryRowContext(ctx, "PRAGMA page_size").Scan(&pageSize)
+		_ = database.QueryRowContext(ctx, "PRAGMA page_size").Scan(&pageSize)
 		freeMB := float64(freelistCount*pageSize) / (1024 * 1024)
 		usedMB := float64((pageCount-freelistCount)*pageSize) / (1024 * 1024)
 
@@ -68,8 +68,8 @@ need free disk space equal to the current database size.`,
 		}
 
 		// Check free pages after vacuum
-		database.QueryRowContext(ctx, "PRAGMA freelist_count").Scan(&freelistCount)
-		database.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount)
+		_ = database.QueryRowContext(ctx, "PRAGMA freelist_count").Scan(&freelistCount)
+		_ = database.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount)
 		fmt.Printf("Done. Database now uses %.1f MB (%.1f MB reclaimed)\n",
 			float64(pageCount*pageSize)/(1024*1024), freeMB)
 		return nil

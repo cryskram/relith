@@ -9,12 +9,11 @@ import (
 type doneMsg struct{}
 
 type spinnerModel struct {
-	spinner  spinner.Model
-	label    string
-	done     bool
-	err      error
-	result   string
-	doneCh   chan error
+	spinner spinner.Model
+	label   string
+	done    bool
+	err     error
+	doneCh  chan error
 }
 
 func NewSpinner(label string, doneCh chan error) tea.Model {

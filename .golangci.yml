@@ -1,68 +1,71 @@
+version: "2"
 run:
   go: "1.26"
-  timeout: 3m
-
 linters:
-    enable:
-      - errcheck
-      - govet
+  default: none
+  enable:
+    - bodyclose
+    - errcheck
+    - gocritic
+    - govet
     - ineffassign
-    - staticcheck
-    - unused
     - misspell
     - revive
-    - bodyclose
-    - gocritic
-
-linters-settings:
-  revive:
+    - staticcheck
+    - unused
+  settings:
+    gocritic:
+      enabled-checks:
+        - appendCombine
+        - boolExprSimplify
+        - builtinShadow
+        - deferInLoop
+        - emptyStringTest
+        - equalFold
+        - evalOrder
+        - httpNoBody
+        - importShadow
+        - initClause
+        - methodExprCall
+        - nestingReduce
+        - nilValReturn
+        - ptrToRefParam
+        - sloppyReassign
+        - stringConcatSimplify
+        - timeExprSimplify
+        - todoCommentWithoutDetail
+        - typeUnparen
+        - unlabelStmt
+        - weakCond
+      disabled-checks:
+        - ifElseChain
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: exported
-        severity: warning
-  gocritic:
-    enabled-checks:
-      - appendCombine
-      - argOrder
-      - badCond
-      - boolExprSimplify
-      - builtinShadow
-      - captLocal
-      - commentFormatting
-      - deferInLoop
-      - elseif
-      - emptyStringTest
-      - equalFold
-      - evalOrder
-      - httpNoBody
-      - hugeParam
-      - ifElseChain
-      - importShadow
-      - initClause
-      - methodExprCall
-      - nestingReduce
-      - newDeref
-      - nilValReturn
-      - ptrToRefParam
-      - rangeValCopy
-      - regexpMust
-      - sloppyReassign
-      - stringConcatSimplify
-      - switchTrue
-      - timeExprSimplify
-      - todoCommentWithoutDetail
-      - typeUnparen
-      - underef
-      - unlabelStmt
-      - unslice
-      - valSwap
-      - weakCond
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-        - gosec
-    - path: internal/db/
-      linters:
-        - revive
+      - linters:
+          - errcheck
+          - gosec
+        path: _test\.go
+      - linters:
+          - revive
+        path: internal/db/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

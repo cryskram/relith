@@ -80,11 +80,11 @@ func TestWalkRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := map[string]string{
-		"main.go":         "package main",
-		"src/util.go":     "package src",
-		"README.md":       "# Readme",
-		".hidden":         "secret",
-		".git/HEAD":       "ref: refs/heads/main",
+		"main.go":                 "package main",
+		"src/util.go":             "package src",
+		"README.md":               "# Readme",
+		".hidden":                 "secret",
+		".git/HEAD":               "ref: refs/heads/main",
 		"node_modules/x/index.js": "module.exports = {}",
 	}
 	for path, content := range files {

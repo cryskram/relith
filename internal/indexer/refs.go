@@ -72,7 +72,7 @@ func ExtractReferences(content string) []Ref {
 
 		var lowerBuf [64]byte
 		nameLen := len(name)
-		lower := lowerBuf[:]
+		var lower []byte
 		if nameLen > 64 {
 			lower = make([]byte, nameLen)
 		} else {

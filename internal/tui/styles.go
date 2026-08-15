@@ -3,13 +3,13 @@ package tui
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	Orange     = lipgloss.Color("#FF7700")
-	Yellow     = lipgloss.Color("#FFB347")
-	Gold       = lipgloss.Color("#FFD700")
-	Green      = lipgloss.Color("#00CC66")
-	Red        = lipgloss.Color("#FF4444")
-	WarmWhite  = lipgloss.Color("#F0E6D0")
-	Grey       = lipgloss.Color("#888888")
+	Orange    = lipgloss.Color("#FF7700")
+	Yellow    = lipgloss.Color("#FFB347")
+	Gold      = lipgloss.Color("#FFD700")
+	Green     = lipgloss.Color("#00CC66")
+	Red       = lipgloss.Color("#FF4444")
+	WarmWhite = lipgloss.Color("#F0E6D0")
+	Grey      = lipgloss.Color("#888888")
 
 	TitleStyle = lipgloss.NewStyle().
 			Bold(true).

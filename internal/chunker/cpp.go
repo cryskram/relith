@@ -15,18 +15,18 @@ var (
 	cppAccessPat    = regexp.MustCompile(`^\s*(public|private|protected)\s*:`)
 	cppAnnotation   = regexp.MustCompile(`^\[.*\]`)
 	// C#
-	csharpRecordPat = regexp.MustCompile(`(?m)^\s*(?:public|private|protected|internal|sealed|abstract|readonly|record)?\s*(?:record|record\s+class|record\s+struct)\s+([A-Za-z_]\w*)`)
-	csharpEventPat  = regexp.MustCompile(`(?m)^\s*(?:public|private|protected|internal)\s+event\s+\w+\s+([A-Za-z_]\w*)`)
+	csharpRecordPat   = regexp.MustCompile(`(?m)^\s*(?:public|private|protected|internal|sealed|abstract|readonly|record)?\s*(?:record|record\s+class|record\s+struct)\s+([A-Za-z_]\w*)`)
+	csharpEventPat    = regexp.MustCompile(`(?m)^\s*(?:public|private|protected|internal)\s+event\s+\w+\s+([A-Za-z_]\w*)`)
 	csharpDelegatePat = regexp.MustCompile(`(?m)^\s*(?:public|private|protected|internal)\s+delegate\s+\w+\s+([A-Za-z_]\w*)\s*\(`)
 	// Kotlin
-	kotlinFunPat    = regexp.MustCompile(`(?m)^\s*(?:public|private|protected|internal|override|suspend|inline|operator|infix|tailrec|external)?\s*(?:fun\s+([A-Za-z_]\w*))\s*\(`)
-	kotlinClassPat  = regexp.MustCompile(`(?m)^\s*(?:public|private|protected|internal|abstract|open|sealed|data|value)?\s*(?:class|object|companion\s+object|enum\s+class|sealed\s+class|data\s+class|value\s+class|annotation\s+class)\s+([A-Za-z_]\w*)`)
-	kotlinIfPat     = regexp.MustCompile(`(?m)^\s*(?:public|private|protected|internal)?\s*(?:interface|annotation)\s+([A-Za-z_]\w*)`)
+	kotlinFunPat   = regexp.MustCompile(`(?m)^\s*(?:public|private|protected|internal|override|suspend|inline|operator|infix|tailrec|external)?\s*(?:fun\s+([A-Za-z_]\w*))\s*\(`)
+	kotlinClassPat = regexp.MustCompile(`(?m)^\s*(?:public|private|protected|internal|abstract|open|sealed|data|value)?\s*(?:class|object|companion\s+object|enum\s+class|sealed\s+class|data\s+class|value\s+class|annotation\s+class)\s+([A-Za-z_]\w*)`)
+	kotlinIfPat    = regexp.MustCompile(`(?m)^\s*(?:public|private|protected|internal)?\s*(?:interface|annotation)\s+([A-Za-z_]\w*)`)
 	// Swift
-	swiftFuncPat    = regexp.MustCompile(`(?m)^\s*(?:public|private|internal|fileprivate|open|static|class|override|mutating|nonmutating|discardableResult)?\s*(?:func\s+([A-Za-z_]\w*))\s*\(`)
-	swiftClassPat   = regexp.MustCompile(`(?m)^\s*(?:public|private|internal|fileprivate|open|final)?\s*(?:class|struct|enum|protocol|extension)\s+([A-Za-z_]\w*)`)
+	swiftFuncPat  = regexp.MustCompile(`(?m)^\s*(?:public|private|internal|fileprivate|open|static|class|override|mutating|nonmutating|discardableResult)?\s*(?:func\s+([A-Za-z_]\w*))\s*\(`)
+	swiftClassPat = regexp.MustCompile(`(?m)^\s*(?:public|private|internal|fileprivate|open|final)?\s*(?:class|struct|enum|protocol|extension)\s+([A-Za-z_]\w*)`)
 	// generic skip
-	cppUsingPat     = regexp.MustCompile(`(?i)^\s*(using\s|import\s)`)
+	cppUsingPat = regexp.MustCompile(`(?i)^\s*(using\s|import\s)`)
 )
 
 func CppChunker(content string) []Chunk {
@@ -43,11 +43,11 @@ func CppChunker(content string) []Chunk {
 }
 
 type cppDecl struct {
-	line       int
-	endLine    int
-	name       string
-	kind       string
-	col        int
+	line    int
+	endLine int
+	name    string
+	kind    string
+	col     int
 }
 
 func findCppDecls(lines []string) []cppDecl {
@@ -202,5 +202,3 @@ func inTemplateStripped(i int, inTemplate bool) int {
 	}
 	return i
 }
-
-

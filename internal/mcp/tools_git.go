@@ -40,8 +40,8 @@ func (s *Server) handleGetRecentCommits(ctx context.Context, params map[string]a
 		return s.errorContent(err.Error())
 	}
 
-	max := intParam(params, "max", 20)
-	out, err := git.RecentCommits(ctx, workdir, max)
+	limit := intParam(params, "max", 20)
+	out, err := git.RecentCommits(ctx, workdir, limit)
 	if err != nil {
 		return s.errorContent(fmt.Sprintf("git log failed: %v", err))
 	}
@@ -52,9 +52,9 @@ func (s *Server) handleGetRecentCommits(ctx context.Context, params map[string]a
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Found %d commit(s):\n\n", len(commits)))
+	fmt.Fprintf(&sb, "Found %d commit(s):\n\n", len(commits))
 	for _, c := range commits {
-		sb.WriteString(fmt.Sprintf("%s  %s  %s <%s>\n    %s\n\n", c.ShortHash, c.Date, c.Author, c.Email, c.Subject))
+		fmt.Fprintf(&sb, "%s  %s  %s <%s>\n    %s\n\n", c.ShortHash, c.Date, c.Author, c.Email, c.Subject)
 	}
 
 	return s.textContent(sb.String())
@@ -71,8 +71,8 @@ func (s *Server) handleGetFileHistory(ctx context.Context, params map[string]any
 		return s.errorContent("path is required")
 	}
 
-	max := intParam(params, "max", 20)
-	out, err := git.FileHistory(ctx, workdir, file, max)
+	limit := intParam(params, "max", 20)
+	out, err := git.FileHistory(ctx, workdir, file, limit)
 	if err != nil {
 		return s.errorContent(fmt.Sprintf("git log for %s failed: %v", file, err))
 	}
@@ -83,9 +83,9 @@ func (s *Server) handleGetFileHistory(ctx context.Context, params map[string]any
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Commit history for %s (%d):\n\n", file, len(commits)))
+	fmt.Fprintf(&sb, "Commit history for %s (%d):\n\n", file, len(commits))
 	for _, c := range commits {
-		sb.WriteString(fmt.Sprintf("%s  %s  %s <%s>\n    %s\n\n", c.ShortHash, c.Date, c.Author, c.Email, c.Subject))
+		fmt.Fprintf(&sb, "%s  %s  %s <%s>\n    %s\n\n", c.ShortHash, c.Date, c.Author, c.Email, c.Subject)
 	}
 
 	return s.textContent(sb.String())
@@ -110,7 +110,7 @@ func (s *Server) handleGetBlame(ctx context.Context, params map[string]any) Call
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Blame for %s:\n\n", file))
+	fmt.Fprintf(&sb, "Blame for %s:\n\n", file)
 	sb.WriteString(out)
 
 	return s.textContent(sb.String())
@@ -142,7 +142,7 @@ func (s *Server) handleGetDiff(ctx context.Context, params map[string]any) CallT
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Diff %s...%s:\n\n", base, head))
+	fmt.Fprintf(&sb, "Diff %s...%s:\n\n", base, head)
 	sb.WriteString(out)
 
 	return s.textContent(sb.String())

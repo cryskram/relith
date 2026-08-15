@@ -133,7 +133,7 @@ func Load() (*Config, error) {
 	return &cfg, nil
 }
 
-func ConfigFilePath() (string, error) {
+func FilePath() (string, error) {
 	configDir, err := DefaultConfigDir()
 	if err != nil {
 		return "", err

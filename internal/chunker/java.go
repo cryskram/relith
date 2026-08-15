@@ -33,11 +33,11 @@ func JavaChunker(content string) []Chunk {
 }
 
 type javaDecl struct {
-	line       int
-	endLine    int
-	name       string
-	kind       string
-	col        int
+	line    int
+	endLine int
+	name    string
+	kind    string
+	col     int
 }
 
 func findJavaDecls(lines []string) []javaDecl {
@@ -185,7 +185,7 @@ func extractJavaConstructor(trimmed string) (string, bool) {
 
 	beforeParen := strings.TrimSpace(trimmed[:parenIdx])
 	parts := strings.Fields(beforeParen)
-	if len(parts) == 0 || len(parts[len(parts)-1]) == 0 {
+	if len(parts) == 0 || parts[len(parts)-1] == "" {
 		return "", false
 	}
 

@@ -56,7 +56,7 @@ func (idx *Indexer) BuildGraphForRepo(ctx context.Context, repoID int64, repoPat
 				continue
 			}
 			if err := storeGraphEdges(ctx, tx, repoID, doc.ID, imports); err != nil {
-				tx.Rollback()
+				_ = tx.Rollback()
 				return fmt.Errorf("store import edges for %s: %w", doc.Path, err)
 			}
 		}
@@ -298,13 +298,15 @@ func storeGraphEdges(ctx context.Context, tx *sql.Tx, repoID int64, docID int64,
 		return nil
 	}
 	return batchExec(ctx, tx, "INSERT OR IGNORE INTO graph_edges (repo_id, source_doc_id, target_doc_id, kind, weight) VALUES ", 5,
-		func(i int) []interface{} { return []interface{}{repoID, docID, edges[i].TargetDocID, edges[i].Kind, edges[i].Weight} },
+		func(i int) []interface{} {
+			return []interface{}{repoID, docID, edges[i].TargetDocID, edges[i].Kind, edges[i].Weight}
+		},
 		len(edges),
 	)
 }
 
-func deleteGraphEdgesForRepo(ctx context.Context, db *sql.DB, repoID int64) error {
-	_, err := db.ExecContext(ctx, `DELETE FROM graph_edges WHERE repo_id = ?`, repoID)
+func deleteGraphEdgesForRepo(ctx context.Context, conn *sql.DB, repoID int64) error {
+	_, err := conn.ExecContext(ctx, `DELETE FROM graph_edges WHERE repo_id = ?`, repoID)
 	return err
 }
 
@@ -332,7 +334,7 @@ func (idx *Indexer) updateGraphForFile(ctx context.Context, repoID int64, repoPa
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM graph_edges WHERE source_doc_id = ? OR target_doc_id = ?`, docID, docID); err != nil {
 		return err
@@ -363,7 +365,9 @@ func batchInsertRefEdgesTx(ctx context.Context, tx *sql.Tx, repoID int64, edges 
 		return nil
 	}
 	return batchExec(ctx, tx, "INSERT OR IGNORE INTO graph_edges (repo_id, source_doc_id, target_doc_id, kind, weight) VALUES ", 5,
-		func(i int) []interface{} { return []interface{}{repoID, edges[i].SourceID, edges[i].TargetID, "references", edges[i].Weight} },
+		func(i int) []interface{} {
+			return []interface{}{repoID, edges[i].SourceID, edges[i].TargetID, "references", edges[i].Weight}
+		},
 		len(edges),
 	)
 }
@@ -380,12 +384,14 @@ func importCapableLang(lang string) bool {
 	return false
 }
 
-func batchInsertRefEdges(ctx context.Context, db batchExecer, repoID int64, edges []db.GetGraphEdgesRow) error {
+func batchInsertRefEdges(ctx context.Context, conn batchExecer, repoID int64, edges []db.GetGraphEdgesRow) error {
 	if len(edges) == 0 {
 		return nil
 	}
-	return batchExec(ctx, db, "INSERT OR IGNORE INTO graph_edges (repo_id, source_doc_id, target_doc_id, kind, weight) VALUES ", 5,
-		func(i int) []interface{} { return []interface{}{repoID, edges[i].SourceID, edges[i].TargetID, "references", edges[i].Weight} },
+	return batchExec(ctx, conn, "INSERT OR IGNORE INTO graph_edges (repo_id, source_doc_id, target_doc_id, kind, weight) VALUES ", 5,
+		func(i int) []interface{} {
+			return []interface{}{repoID, edges[i].SourceID, edges[i].TargetID, "references", edges[i].Weight}
+		},
 		len(edges),
 	)
 }

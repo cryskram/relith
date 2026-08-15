@@ -163,7 +163,7 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repoPath string, repoID int64
 
 		for _, fi := range batch {
 			visited[fi.RelPath] = struct{}{}
-			existing, _ := existingByPath[fi.RelPath]
+			existing := existingByPath[fi.RelPath]
 			jobs <- batchJob{fi: fi, existing: existing}
 		}
 		close(jobs)
@@ -281,7 +281,7 @@ func (idx *Indexer) IndexFile(ctx context.Context, repoID int64, relPath, fullPa
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	qtx := idx.queries().WithTx(tx)
 
@@ -384,10 +384,12 @@ func (idx *Indexer) DeleteFile(ctx context.Context, repoID int64, relPath string
 		return fmt.Errorf("delete doc: %w", err)
 	}
 
-	q.UpdateRepoStatus(ctx, db.UpdateRepoStatusParams{
+	if err := q.UpdateRepoStatus(ctx, db.UpdateRepoStatusParams{
 		Status: "ready",
 		ID:     repoID,
-	})
+	}); err != nil {
+		return fmt.Errorf("update repo status: %w", err)
+	}
 	return nil
 }
 
@@ -484,7 +486,7 @@ func (idx *Indexer) writeBatch(
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	qtx := idx.queries().WithTx(tx)
 
@@ -581,7 +583,9 @@ func batchInsertSymbols(ctx context.Context, tx *sql.Tx, docID int64, chunks []c
 		return nil
 	}
 	return batchExec(ctx, tx, "INSERT INTO symbols (doc_id, name, kind, line, col) VALUES ", 5,
-		func(i int) []interface{} { return []interface{}{docID, syms[i].Name, syms[i].Kind, int64(syms[i].Line), int64(syms[i].Col)} },
+		func(i int) []interface{} {
+			return []interface{}{docID, syms[i].Name, syms[i].Kind, int64(syms[i].Line), int64(syms[i].Col)}
+		},
 		len(syms),
 	)
 }
@@ -591,12 +595,14 @@ func batchInsertRefs(ctx context.Context, tx *sql.Tx, docID int64, refs []Ref) e
 		return nil
 	}
 	return batchExec(ctx, tx, "INSERT INTO refs (doc_id, name, line, col, context) VALUES ", 5,
-		func(i int) []interface{} { return []interface{}{docID, refs[i].Name, int64(refs[i].Line), int64(refs[i].Col), refs[i].Context} },
+		func(i int) []interface{} {
+			return []interface{}{docID, refs[i].Name, int64(refs[i].Line), int64(refs[i].Col), refs[i].Context}
+		},
 		len(refs),
 	)
 }
 
-func batchExec(ctx context.Context, db batchExecer, prefix string, paramsPerRow int, rowFn func(i int) []interface{}, n int) error {
+func batchExec(ctx context.Context, conn batchExecer, prefix string, paramsPerRow int, rowFn func(i int) []interface{}, n int) error {
 	if n == 0 {
 		return nil
 	}
@@ -626,7 +632,7 @@ func batchExec(ctx context.Context, db batchExecer, prefix string, paramsPerRow 
 			sb.WriteByte(')')
 			args = append(args, rowFn(start+j)...)
 		}
-		if _, err := db.ExecContext(ctx, sb.String(), args...); err != nil {
+		if _, err := conn.ExecContext(ctx, sb.String(), args...); err != nil {
 			return err
 		}
 	}

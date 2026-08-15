@@ -93,8 +93,8 @@ func removeRepoTUI(app *cliApp, repo db.Repository) error {
 func vacuumIfNeeded(database *sql.DB) {
 	var pageCount, freelistCount int
 	ctx := context.Background()
-	database.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount)
-	database.QueryRowContext(ctx, "PRAGMA freelist_count").Scan(&freelistCount)
+	_ = database.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount)
+	_ = database.QueryRowContext(ctx, "PRAGMA freelist_count").Scan(&freelistCount)
 	if pageCount == 0 {
 		return
 	}
