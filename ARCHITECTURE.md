@@ -137,7 +137,7 @@ relith/
 │   │   └── git.go                 # Commits, file history, blame, diff helpers
 │   │
 │   ├── reasoning/                 # Context gathering engine
-│   │   └── reasoning.go           # Trace() — combines search + symbols + graph
+│   │   └── reasoning.go           # Trace() - combines search + symbols + graph
 │   │
 │   ├── tui/                       # Terminal UI components (Bubble Tea)
 │   │   ├── styles.go              # Lipgloss styles (orange/amber theme)
@@ -194,9 +194,9 @@ relith/
 
 ### Why this structure
 
-- **`internal/`**: Go visibility enforcement — these packages cannot be imported by external consumers.
+- **`internal/`**: Go visibility enforcement - these packages cannot be imported by external consumers.
 - **`sql/` separate from `db/`**: Source of truth (SQL migrations + sqlc queries) vs generated Go code.
-- **`cmd/`**: Thin entry points — parse flags, load config, launch component. Zero business logic.
+- **`cmd/`**: Thin entry points - parse flags, load config, launch component. Zero business logic.
 - **`bin/`**: Build output, gitignored.
 
 ## 3. Package Responsibilities
@@ -505,7 +505,7 @@ The MCP server (`relithmcp`) implements the [Model Context Protocol](https://mod
 | --------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------- |
 | `search_code`         | Full-text search across indexed repos            | `query` (required), `repo_name` (optional), `language` (optional), `max_results` (default 20) |
 | `get_file_content`    | Retrieve a file's content by repo name + path    | `repo_name` (required), `path` (required)                                                     |
-| `list_repositories`   | List all tracked repos with status and file count | —                                                                                           |
+| `list_repositories`   | List all tracked repos with status and file count | -                                                                                           |
 | `get_repo_summary`    | Language breakdown, file/chunk count, last indexed| `repo_name` (required)                                                                        |
 | `find_symbol`         | Search symbols by name prefix                    | `name` (required), `kind` (optional), `repo_name` (optional)                                  |
 | `find_references`     | Find all call sites for a symbol name            | `name` (required), `repo_name` (optional)                                                     |
@@ -527,7 +527,7 @@ The MCP server (`relithmcp`) implements the [Model Context Protocol](https://mod
 
 ### Git-Aware Context
 
-The four git tools shell out to the system `git` binary (running with the repo root as workdir) — no git library dependency. They enrich MCP answers with *when/why/who* context: recent changes (`get_recent_commits`), what one file went through (`get_file_history`), who owns each line (`get_blame`), and exactly what a change did (`get_diff`). A repo must be a git worktree (`.git/` present) or the tools return a clear error. Parser utilities live in `internal/git/git.go`; handlers in `internal/mcp/tools_git.go`. Default `get_diff` is `HEAD~1...HEAD`, answering "what did the last commit change".
+The four git tools shell out to the system `git` binary (running with the repo root as workdir) - no git library dependency. They enrich MCP answers with *when/why/who* context: recent changes (`get_recent_commits`), what one file went through (`get_file_history`), who owns each line (`get_blame`), and exactly what a change did (`get_diff`). A repo must be a git worktree (`.git/` present) or the tools return a clear error. Parser utilities live in `internal/git/git.go`; handlers in `internal/mcp/tools_git.go`. Default `get_diff` is `HEAD~1...HEAD`, answering "what did the last commit change".
 
 ### Transport
 
@@ -564,7 +564,7 @@ relith://repos/{id}              → Repository metadata
 4. Process files in batches of 500 with N concurrent workers (default 4):
    - Read file content
    - Compute FNV-64a hash for change detection
-   - Check mod_time/size against existing document — skip if unchanged
+   - Check mod_time/size against existing document - skip if unchanged
    - Detect language (extension map: ~90 languages)
    - Chunk via language-specific chunker; fall back to line-based (50 lines, 0 overlap)
    - **Extract refs**: byte-level scanner finds `identifier()` patterns (no allocations, no regex)
@@ -581,9 +581,9 @@ relith://repos/{id}              → Repository metadata
 
 1. Clear existing `graph_edges` for repo
 2. Extract import edges per doc: Go (`import "..."`), JS/TS (`from "..."`), Python (`import ...`), Rust (`use ...`)
-3. Compute ref edges: `SELECT FROM refs JOIN symbols ON name` (filtered by `symbol_freq` CTE to exclude names in >20 docs — avoids combinatorial explosion)
+3. Compute ref edges: `SELECT FROM refs JOIN symbols ON name` (filtered by `symbol_freq` CTE to exclude names in >20 docs - avoids combinatorial explosion)
 4. Batch INSERT all edges into `graph_edges` table (kinds: `import`, `references`)
-5. Non-import-capable languages (C/C++/Java/PHP/Ruby/etc.) skip the per-doc import loop — only ref edges are computed
+5. Non-import-capable languages (C/C++/Java/PHP/Ruby/etc.) skip the per-doc import loop - only ref edges are computed
 
 ### Incremental Index (File Change via Watcher)
 
@@ -731,7 +731,7 @@ All TUI components live in `internal/tui/`:
 |-----------|------|---------|-------------|
 | `Progress` | `progress.go` | `relith index` | Animated progress bar with ETA, elapsed time, file count, error count. Phases: "Walking...", progress bar during indexing, "Building graph..." |
 | `ServerModel` | `server.go` | `relith serve` | Live dashboard: server URL plus repo/file/chunk/symbol/ref counts, refreshed every 2s. Polls `GetStats` via a `StatsFunc` passed from the CLI. |
-| `Spinner` | `spinner.go` | `relith repo remove` | Simple spinner that blocks on a `doneCh` — spins until backend operation completes, then prints result and exits |
+| `Spinner` | `spinner.go` | `relith repo remove` | Simple spinner that blocks on a `doneCh` - spins until backend operation completes, then prints result and exits |
 
 ### Theme
 
@@ -760,10 +760,10 @@ Commands with styled output (but not interactive TUI): `status`, `repo list`.
 
 ### SQLite Tuning
 
-- `PRAGMA synchronous=NORMAL` — 2× faster writes than FULL with same durability guarantee
-- `PRAGMA cache_size=-64000` — 64MB page cache
-- `PRAGMA temp_store=MEMORY` — temp tables in memory
-- `PRAGMA mmap_size=268435456` — 256MB memory-mapped I/O
+- `PRAGMA synchronous=NORMAL` - 2× faster writes than FULL with same durability guarantee
+- `PRAGMA cache_size=-64000` - 64MB page cache
+- `PRAGMA temp_store=MEMORY` - temp tables in memory
+- `PRAGMA mmap_size=268435456` - 256MB memory-mapped I/O
 
 ### Batch Operations
 
@@ -774,7 +774,7 @@ Commands with styled output (but not interactive TUI): `status`, `repo list`.
 ### Graph Build Optimization
 
 - `symbol_freq` CTE: filters symbol names appearing in >20 docs to avoid combinatorial explosion in `refs JOIN symbols`
-- Import-capable language check: only Go/JS/TS/Python/Rust files get per-doc import loop (C/C++/Java/etc. skipped — ref edges only)
+- Import-capable language check: only Go/JS/TS/Python/Rust files get per-doc import loop (C/C++/Java/etc. skipped - ref edges only)
 - Edges pre-computed into `graph_edges` table; API reads from table instead of re-running the JOIN
 - Compound indexes `refs(name, doc_id)` and `symbols(name, doc_id)` for covering index scans on the graph query
 - Pre-filter refs and symbols to `symbol_freq` names via `WHERE name IN` before the cross-join (reduces intermediate rows from full cross-product to only names passing frequency filter)
@@ -821,7 +821,7 @@ Remaining optimization opportunities (in priority order):
 
 ## 15. Version Roadmap
 
-### v0.1 — MVP (Complete)
+### v0.1 - MVP (Complete)
 
 - Go module with CLI (cobra), daemon entry point, config loading
 - SQLite with FTS5, sqlc-generated queries, migrations
@@ -830,7 +830,7 @@ Remaining optimization opportunities (in priority order):
 - REST API: health, repo CRUD, indexing trigger, search
 - File watcher (fsnotify + debouncer)
 
-### v0.2 — Symbol & Graph (Complete)
+### v0.2 - Symbol & Graph (Complete)
 
 - MCP server with 7 tools: search_code, get_file_content, list_repositories, get_repo_summary, find_symbols, find_refs, graph_hubs
 - Cross-platform builds (Windows + Linux + macOS)
@@ -843,14 +843,14 @@ Remaining optimization opportunities (in priority order):
 - SQLite performance tuning (PRAGMAs, batch INSERTs)
 - FTS content deletion fix (explicit cleanup for FK CASCADE gaps)
 
-### v0.3 — Reasoning Engine (Complete)
+### v0.3 - Reasoning Engine (Complete)
 
 - Graph-enhanced code reasoning (`internal/reasoning`)
 - Seed-based context gathering (seed docs → related files via graph edges → related repos)
 - MCP tool: `get_code_context` (later renamed `trace_context`)
 - Browser-based graph UI hardened
 
-### v0.4 — Performance & Scale (Complete)
+### v0.4 - Performance & Scale (Complete)
 
 - Graph build optimization: `symbol_freq` CTE + `WHERE name IN` pre-filter + compound indexes (21× graph build speedup)
 - Import-capable language filter: only Go/JS/TS/Python/Rust files get per-doc import loop
@@ -858,7 +858,7 @@ Remaining optimization opportunities (in priority order):
 - FTS cleanup: explicit multi-table deletion (`DeleteDocuments`, `DeleteRepoWithData`)
 - Linux kernel 94K files: **15min 48s total** (index 14min 40s + graph build 1min 8s)
 
-### v0.5 — Code Intelligence (Complete)
+### v0.5 - Code Intelligence (Complete)
 
 - Byte-level ref scanner no-allocation, no-regex `ExtractReferences`
 - Walker skip list additions (`generated/`, `tools/`, `scripts/`)
@@ -868,14 +868,14 @@ Remaining optimization opportunities (in priority order):
 - Terminal UI: Bubble Tea progress bar for `index`, spinner for `remove`, server dashboard for `serve`
 - Config cleanup: removed `log` section from config
 
-### v0.6 — Git-Aware Context (Complete)
+### v0.6 - Git-Aware Context (Complete)
 
 - 4 new MCP tools (17 → 21 total): `get_recent_commits`, `get_file_history`, `get_blame`, `get_diff`
 - New `internal/git` package that shells out to the system `git` binary (no go-git dependency)
 - Answers *when / why / who* questions: recent changes, per-file history (follows renames), line authorship, and full patches between refs
 - `GetRepoByName` query for name-based repo lookup
 
-### v0.7 — Work In Progress
+### v0.7 - Work In Progress
 
 - **Storage optimization**: Reduce chunk storage overhead (deduplicate identical chunks, optional comment stripping for FTS)
 

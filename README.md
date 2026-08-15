@@ -8,6 +8,7 @@
 <p align="center">
   <a href="https://github.com/cryskram/relith/releases"><img src="https://img.shields.io/github/v/release/cryskram/relith?style=for-the-badge&logo=github&color=e94560" alt="Release"></a>
   <a href="https://github.com/cryskram/relith/stargazers"><img src="https://img.shields.io/github/stars/cryskram/relith?style=for-the-badge&logo=github&color=3178C6" alt="Stars"></a>
+  <a href="https://app.codecov.io/gh/cryskram/relith"><img src="https://img.shields.io/codecov/c/github/cryskram/relith?style=for-the-badge&logo=codecov&color=F01F7A" alt="Coverage"></a>
   <a href="https://go.dev"><img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go" alt="Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License"></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macOS-969696?style=for-the-badge" alt="Platform"></a>
@@ -15,22 +16,42 @@
 
 <br>
 
-Relith is a **local-first context engine** for AI-assisted coding. It indexes your codebases and exposes them through a unified MCP interface — one index, any AI.
+Relith is a **local-first context engine** for AI-assisted coding. It indexes your codebases and exposes them through a unified MCP interface - one index, any AI.
 
-Instead of every AI tool building its own isolated context, Relith is a **shared intelligence layer**: Cursor, Claude Code, OpenCode, and any MCP client query it for code search, symbol lookup, reference tracking, dependency graphs — and now, **git history**.
+Instead of every AI tool building its own isolated context, Relith is a **shared intelligence layer**: Cursor, Claude Code, OpenCode, and any MCP client query it for code search, symbol lookup, reference tracking, dependency graphs - and now, **git history**.
+
+## Why Relith?
+
+- **One index, every AI.** Every AI tool asks the same questions of your codebase. Relith builds the context once and serves every MCP client from the same index - no per-tool re-indexing, no duplicated state.
+- **Local-first by default.** A single static Go binary. No Docker, no npm/pip, no runtime, no cloud account. Your code never leaves your machine.
+- **Beyond grep.** Search only finds strings. Relith also answers *where is this used*, *what calls this*, *how do these files relate*, and *when, why, and who changed this line* - via symbols, references, a dependency graph, and git-aware tools.
+- **Zero glue code.** Speak the Model Context Protocol over stdio and your tools show up in any MCP-compatible agent automatically.
+
+### How it compares
+
+| | ripgrep | ast-grep | Sourcegraph | Relith |
+|---|---|---|---|---|
+| **Search** | Regex over files | Structural (AST) patterns | Regex + keyword + semantic (hosted) | Regex/FTS over a shared index |
+| **Multi-repo** | Per invocation | Per directory | Yes (hosted) | Yes - one index |
+| **Symbols & references** | No | Partial (structural) | Yes (SCIP) | Yes, 17 languages |
+| **Callers/callees & graph** | No | No | Yes (code navigation) | Yes (knowledge graph) |
+| **Git-aware context** | No | No | Yes (hosted) | Yes (commits, history, blame, diffs) |
+| **MCP-native** | No | No | Yes (Enterprise instance) | Yes, local stdio |
+| **Data locality** | Local | Local | SaaS or self-host | Local |
+| **Setup** | One binary | One binary | Instance + account | One binary |
 
 ## Features
 
-- **MCP-native** — 21 tools for AI assistants: search, symbols, references, definitions, callers/callees, file outline, dependency tracing, graph queries, architecture overview, commits, blame, and diffs
-- **Git-aware context** — ask *when / why / who*: recent commits, per-file history (follows renames), per-line blame, and full patches between any two refs
-- **Cross-file reasoning** — one `trace_context` bundle combining FTS search + symbol matches + references + graph neighbors
-- **Knowledge graph** — typed dependency graph (import edges for Go/JS/TS/Python/Rust, reference co-occurrence for all), visualized with an interactive D3.js force-directed graph
-- **Symbol & reference extraction** — functions, types, methods, interfaces, enums, macros across 17 languages
-- **Multi-repo** — index unlimited repos, search across all at once
-- **Self-healing watcher** — auto-reindexes changed files via fsnotify
-- **Terminal UI** — Bubble Tea progress bars, spinners, and a server dashboard
-- **REST API** — HTTP server for scripts, CI pipelines, and programmatic access
-- **One binary, local-first** — Go, no npm/pip/uv, no Docker, no runtime, your code never leaves your machine
+- **MCP-native** - 21 tools for AI assistants: search, symbols, references, definitions, callers/callees, file outline, dependency tracing, graph queries, architecture overview, commits, blame, and diffs
+- **Git-aware context** - ask *when / why / who*: recent commits, per-file history (follows renames), per-line blame, and full patches between any two refs
+- **Cross-file reasoning** - one `trace_context` bundle combining FTS search + symbol matches + references + graph neighbors
+- **Knowledge graph** - typed dependency graph (import edges for Go/JS/TS/Python/Rust, reference co-occurrence for all), visualized with an interactive D3.js force-directed graph
+- **Symbol & reference extraction** - functions, types, methods, interfaces, enums, macros across 17 languages
+- **Multi-repo** - index unlimited repos, search across all at once
+- **Self-healing watcher** - auto-reindexes changed files via fsnotify
+- **Terminal UI** - Bubble Tea progress bars, spinners, and a server dashboard
+- **REST API** - HTTP server for scripts, CI pipelines, and programmatic access
+- **One binary, local-first** - Go, no npm/pip/uv, no Docker, no runtime, your code never leaves your machine
 
 ### Performance
 
@@ -82,7 +103,7 @@ Interactive commands (`index`, `remove`, `serve`) render a Bubble Tea TUI automa
 
 ## MCP Server
 
-Relith speaks the [Model Context Protocol](https://modelcontextprotocol.io) over stdio. Point any MCP-compatible assistant at `relithmcp`, and the tools show up automatically — no glue code.
+Relith speaks the [Model Context Protocol](https://modelcontextprotocol.io) over stdio. Point any MCP-compatible assistant at `relithmcp`, and the tools show up automatically - no glue code.
 
 ```bash
 relith install                 # auto-detect installed agents
@@ -161,4 +182,4 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).
