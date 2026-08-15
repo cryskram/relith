@@ -19,6 +19,7 @@ detect_os() {
 	case "$(uname -s)" in
 		Linux) echo linux ;;
 		Darwin) echo darwin ;;
+		MINGW* | MSYS* | CYGWIN*) echo windows ;;
 		*) echo "error: unsupported OS: $(uname -s)" >&2; exit 1 ;;
 	esac
 }
@@ -57,6 +58,11 @@ fi
 FILE="relith_${VERSION}_${OS}_${ARCH}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/v${VERSION}/${FILE}"
 
+EXT=""
+if [ "$OS" = "windows" ]; then
+	EXT=".exe"
+fi
+
 echo "==> Relith ${VERSION} (${OS}/${ARCH})"
 echo "==> Downloading ${URL}"
 
@@ -67,9 +73,9 @@ curl -fsSL -o "${TMP_DIR}/${FILE}" "${URL}"
 tar -xzf "${TMP_DIR}/${FILE}" -C "${TMP_DIR}"
 
 mkdir -p "$INSTALL_DIR"
-install -m 0755 "${TMP_DIR}/relith" "$INSTALL_DIR/relith"
-install -m 0755 "${TMP_DIR}/relithd" "$INSTALL_DIR/relithd"
-install -m 0755 "${TMP_DIR}/relithmcp" "$INSTALL_DIR/relithmcp"
+install -m 0755 "${TMP_DIR}/relith${EXT}" "$INSTALL_DIR/relith${EXT}"
+install -m 0755 "${TMP_DIR}/relithd${EXT}" "$INSTALL_DIR/relithd${EXT}"
+install -m 0755 "${TMP_DIR}/relithmcp${EXT}" "$INSTALL_DIR/relithmcp${EXT}"
 
 echo "==> Installed relith, relithd, relithmcp to ${INSTALL_DIR}"
 echo "    Add it to your PATH: export PATH=\"\${PATH}:${INSTALL_DIR}\""

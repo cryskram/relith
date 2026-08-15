@@ -73,6 +73,7 @@ make build-all
 
 # ...or install the latest release:
 curl -fsSL https://raw.githubusercontent.com/cryskram/relith/main/install.sh | sh
+# On Windows, run the same command from Git Bash / MSYS2.
 
 ./bin/relith repo add /path/to/your/project
 ./bin/relith index
