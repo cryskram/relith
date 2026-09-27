@@ -56,4 +56,4 @@ changelog:
       - "^ci:"
 
 release:
-  draft: true
+  draft: false
