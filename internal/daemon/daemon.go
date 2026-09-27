@@ -14,11 +14,14 @@ import (
 	"github.com/cryskram/relith/internal/api"
 	"github.com/cryskram/relith/internal/app"
 	"github.com/cryskram/relith/internal/db"
+	"github.com/cryskram/relith/internal/indexer"
+	"github.com/cryskram/relith/internal/watcher"
 )
 
 type Daemon struct {
-	app    *app.App
-	apiSrv *api.Server
+	app      *app.App
+	apiSrv   *api.Server
+	watchers []*watcher.Watcher
 }
 
 func New(a *app.App) *Daemon {
@@ -54,12 +57,50 @@ func (d *Daemon) Run(ctx context.Context) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	if err := d.startWatchers(ctx); err != nil {
+		slog.Warn("watcher startup failed", "err", err)
+	}
+
 	<-ctx.Done()
+
+	d.stopWatchers()
 
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return nil
 	}
 	return ctx.Err()
+}
+
+func (d *Daemon) startWatchers(ctx context.Context) error {
+	cfg := d.app.Config
+	if cfg == nil || !cfg.Watcher.Enabled {
+		return nil
+	}
+
+	idx := indexer.New(d.app.DB, d.app.Logger, cfg.Indexer)
+
+	repos, err := db.New(d.app.DB).ListRepos(ctx)
+	if err != nil {
+		return fmt.Errorf("list repos: %w", err)
+	}
+
+	slog.Info("starting file watcher", "repos", len(repos))
+	for _, repo := range repos {
+		w := watcher.New(repo.Path, repo.ID, idx, d.app.Logger, cfg.Watcher)
+		if err := w.Start(ctx); err != nil {
+			slog.Error("start watcher", "err", err, "repo", repo.Path)
+			continue
+		}
+		d.watchers = append(d.watchers, w)
+	}
+	return nil
+}
+
+func (d *Daemon) stopWatchers() {
+	for _, w := range d.watchers {
+		w.Stop()
+	}
+	d.watchers = nil
 }
 
 func (d *Daemon) stopAPI(ctx context.Context) {

@@ -38,7 +38,7 @@ func run() error {
 	}
 	defer database.Close()
 
-	server := mcp.NewServer(database, slogLogger)
+	server := mcp.NewServer(database, slogLogger, *cfg)
 
 	ctx := context.Background()
 	if err := server.Run(ctx); err != nil {

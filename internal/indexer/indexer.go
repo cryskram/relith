@@ -323,6 +323,17 @@ func (idx *Indexer) IndexFile(ctx context.Context, repoID int64, relPath, fullPa
 		docID = doc.ID
 	}
 
+	delta := int64(0)
+	if existingPtr == nil {
+		delta = 1
+	}
+	if err := qtx.UpdateRepoFileCount(ctx, db.UpdateRepoFileCountParams{
+		ID:    repoID,
+		Delta: delta,
+	}); err != nil {
+		return fmt.Errorf("update repo file count: %w", err)
+	}
+
 	for _, c := range chunks {
 		if _, err := qtx.CreateChunk(ctx, db.CreateChunkParams{
 			DocID:      docID,
@@ -358,11 +369,18 @@ func (idx *Indexer) IndexFile(ctx context.Context, repoID int64, relPath, fullPa
 
 	repoPath := strings.TrimSuffix(fullPath, relPath)
 	repoPath = strings.TrimSuffix(repoPath, "/")
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	// Graph edges are rebuilt in their own transaction after the document
+	// write commits so the single DB connection (MaxOpenConns=1) is free.
 	if err := idx.updateGraphForFile(ctx, repoID, repoPath, relPath, docID); err != nil {
 		idx.logger.Warn("graph update failed (non-fatal)", "err", err, "path", relPath)
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 func (idx *Indexer) DeleteFile(ctx context.Context, repoID int64, relPath string) error {
@@ -380,17 +398,25 @@ func (idx *Indexer) DeleteFile(ctx context.Context, repoID int64, relPath string
 		return fmt.Errorf("get doc: %w", err)
 	}
 
-	if err := q.DeleteDocument(ctx, doc.ID); err != nil {
+	tx, err := idx.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	qtx := idx.queries().WithTx(tx)
+
+	if err := qtx.DeleteDocument(ctx, doc.ID); err != nil {
 		return fmt.Errorf("delete doc: %w", err)
 	}
-
-	if err := q.UpdateRepoStatus(ctx, db.UpdateRepoStatusParams{
-		Status: "ready",
-		ID:     repoID,
+	if err := qtx.UpdateRepoFileCount(ctx, db.UpdateRepoFileCountParams{
+		ID:    repoID,
+		Delta: -1,
 	}); err != nil {
-		return fmt.Errorf("update repo status: %w", err)
+		return fmt.Errorf("update repo file count: %w", err)
 	}
-	return nil
+
+	return tx.Commit()
 }
 
 func fastHash(content string) string {

@@ -7,13 +7,27 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cryskram/relith/internal/config"
 	"github.com/cryskram/relith/internal/testutil"
 )
+
+func defaultTestConfig() config.Config {
+	return config.Config{
+		Indexer: config.IndexerConfig{
+			Concurrency: 4,
+			MaxFileSize: 10 * 1024 * 1024,
+		},
+		Search: config.SearchConfig{
+			MaxResults:   100,
+			PathBoosting: true,
+		},
+	}
+}
 
 func runServer(t *testing.T, fdb *testutil.DB, requests string) []JSONRPCResponse {
 	t.Helper()
 
-	s := NewServer(fdb.SQL, testutil.DiscardLogger())
+	s := NewServer(fdb.SQL, testutil.DiscardLogger(), defaultTestConfig())
 	var out bytes.Buffer
 	s.reader = strings.NewReader(requests)
 	s.writer = &out
@@ -131,6 +145,55 @@ func TestServerCallSearchCode(t *testing.T) {
 	}
 }
 
+// Regression: filters must be pushed into SQL so that max_results (LIMIT)
+// applies after filtering. Filtering in Go after a global LIMIT can drop all
+// eligible results.
+func TestServerCallSearchCodeFiltersApplyBeforeLimit(t *testing.T) {
+	fdb := testutil.NewDB(t)
+
+	repoA := fdb.CreateRepo("/tmp/repo-a", "repo-a")
+	docA := fdb.CreateDocument(repoA.ID, "main.go", "Go")
+	fdb.CreateChunk(docA.ID, 0, "package main\nfunc alpha() {}")
+	repoB := fdb.CreateRepo("/tmp/repo-b", "repo-b")
+	docB := fdb.CreateDocument(repoB.ID, "other.go", "Rust")
+	fdb.CreateChunk(docB.ID, 0, "package main\nfunc alpha() {}")
+
+	// max_results=1 plus a repo_name filter must return repo-a's hit.
+	requests := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_code","arguments":{"query":"alpha","repo_name":"repo-a","max_results":1}}}
+`
+	responses := runServer(t, fdb, requests)
+
+	resp := byID(t, responses, "1")
+	if resp.Error != nil {
+		t.Fatalf("search_code error: %+v", resp.Error)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected object result, got %T", resp.Result)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "main.go") {
+		t.Errorf("scoped search should return repo-a/main.go, got: %s", text)
+	}
+	if strings.Contains(text, "other.go") {
+		t.Errorf("scoped search must not return repo-b/other.go, got: %s", text)
+	}
+
+	// language filter is pushed into SQL too.
+	requests = `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_code","arguments":{"query":"alpha","language":"Rust"}}}
+`
+	responses = runServer(t, fdb, requests)
+	resp = byID(t, responses, "1")
+	if resp.Error != nil {
+		t.Fatalf("search_code error: %+v", resp.Error)
+	}
+	result, _ = resp.Result.(map[string]any)
+	text = resultText(t, result)
+	if !strings.Contains(text, "other.go") || strings.Contains(text, "main.go") {
+		t.Errorf("language=Rust should return only other.go, got: %s", text)
+	}
+}
+
 func TestServerCallSearchCodeNoRepos(t *testing.T) {
 	fdb := testutil.NewDB(t)
 
@@ -241,6 +304,29 @@ func TestServerFindSymbol(t *testing.T) {
 	text := resultText(t, resp.Result.(map[string]any))
 	if !strings.Contains(text, "NewParser") {
 		t.Errorf("find_symbol should include NewParser, got: %s", text)
+	}
+}
+
+func TestServerSearchConfigFlowsIntoSearcher(t *testing.T) {
+	fdb := testutil.NewDB(t)
+
+	repo := fdb.CreateRepo("/tmp/repo", "cfg-repo")
+	doc := fdb.CreateDocument(repo.ID, "main.go", "Go")
+	fdb.CreateChunk(doc.ID, 0, "alpha beta")
+	fdb.CreateChunk(doc.ID, 1, "alpha gamma")
+	fdb.CreateChunk(doc.ID, 2, "alpha delta")
+
+	s := NewServer(fdb.SQL, testutil.DiscardLogger(), config.Config{
+		Indexer: config.IndexerConfig{Concurrency: 4},
+		Search:  config.SearchConfig{MaxResults: 2, PathBoosting: true},
+	})
+
+	results, err := s.searcher.Search(context.Background(), "alpha", 0)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) > 2 {
+		t.Errorf("Search with limit 0 should default to cfg.Search.MaxResults (2), got %d results", len(results))
 	}
 }
 

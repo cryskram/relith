@@ -473,7 +473,11 @@ func (h *handlers) search(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	results, err := h.searcher.Search(ctx, query, limit)
+	results, err := h.searcher.SearchWithFilters(ctx, query, limit, search.Filters{
+		RepoName:   r.URL.Query().Get("repo"),
+		Language:   r.URL.Query().Get("language"),
+		PathPrefix: r.URL.Query().Get("path"),
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "search: "+err.Error())
 		return

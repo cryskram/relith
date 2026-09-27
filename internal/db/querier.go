@@ -46,6 +46,7 @@ type Querier interface {
 	ListDocuments(ctx context.Context, repoID int64) ([]Document, error)
 	ListRepos(ctx context.Context) ([]Repository, error)
 	UpdateDocument(ctx context.Context, arg UpdateDocumentParams) error
+	UpdateRepoFileCount(ctx context.Context, arg UpdateRepoFileCountParams) error
 	UpdateRepoStatus(ctx context.Context, arg UpdateRepoStatusParams) error
 }
 

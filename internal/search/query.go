@@ -1,13 +1,34 @@
 package search
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
-var fts5Special = []string{`"`, `(`, `)`, `*`, `^`, `+`, `-`, `~`, `:`, "AND", "OR", "NOT", "NEAR"}
+// fts5Special are single-character tokens that FTS5 interprets as operators
+// even when they appear inside a larger token.
+var fts5Special = []string{`"`, `(`, `)`, `*`, `^`, `+`, `-`, `~`, `:`}
+
+// fts5KeywordOperators are multi-character FTS5 operators. They only take
+// effect as whitespace/non-alphanumeric-delimited tokens (matched
+// case-insensitively by FTS5), e.g. "foo AND bar", not inside "android".
+var fts5KeywordOperators = map[string]bool{
+	"AND":  true,
+	"OR":   true,
+	"NOT":  true,
+	"NEAR": true,
+}
 
 func hasFTS5Operators(input string) bool {
-	upper := strings.ToUpper(input)
 	for _, op := range fts5Special {
-		if strings.Contains(upper, op) {
+		if strings.Contains(input, op) {
+			return true
+		}
+	}
+	for _, tok := range strings.FieldsFunc(input, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
+	}) {
+		if fts5KeywordOperators[strings.ToUpper(tok)] {
 			return true
 		}
 	}
@@ -38,13 +59,12 @@ func buildMatchQuery(input string) string {
 		return ""
 	}
 
-	if len(terms) == 1 {
-		return escapeFTS5Term(terms[0]) + "*"
-	}
-
+	// No operators: every term is an FTS5 AND term, prefix-expanded so that
+	// plain words also match longer identifiers (e.g. "sqlite" matches
+	// "sqlite3_init").
 	var parts []string
 	for _, t := range terms {
-		parts = append(parts, escapeFTS5Term(t))
+		parts = append(parts, escapeFTS5Term(t)+"*")
 	}
 	return strings.Join(parts, " ")
 }

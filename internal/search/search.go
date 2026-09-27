@@ -21,6 +21,14 @@ type Result struct {
 	Score      float64 `json:"score"`
 }
 
+// Filters scope a search to a subset of indexed documents. Empty fields are
+// ignored, so a zero Filters value behaves exactly like an unscoped search.
+type Filters struct {
+	RepoName   string `json:"repo_name"`
+	Language   string `json:"language"`
+	PathPrefix string `json:"path_prefix"`
+}
+
 type Searcher struct {
 	db     *sql.DB
 	logger *slog.Logger
@@ -35,7 +43,14 @@ func New(database *sql.DB, logger *slog.Logger, cfg config.SearchConfig) *Search
 	}
 }
 
+// Search runs an unscoped search over all indexed documents.
 func (s *Searcher) Search(ctx context.Context, query string, limit int) ([]Result, error) {
+	return s.SearchWithFilters(ctx, query, limit, Filters{})
+}
+
+// SearchWithFilters runs a full-text search, pushing optional repo/language/path
+// predicates into the SQL so that LIMIT applies after filtering.
+func (s *Searcher) SearchWithFilters(ctx context.Context, query string, limit int, filters Filters) ([]Result, error) {
 	matchQuery := buildMatchQuery(query)
 	if matchQuery == "" {
 		return nil, nil
@@ -48,13 +63,28 @@ func (s *Searcher) Search(ctx context.Context, query string, limit int) ([]Resul
 		limit = 10
 	}
 
-	orderClause := "rank"
-	var pathBoostTerm string
-	if s.cfg.PathBoosting {
-		orderClause = `rank + CASE WHEN d.path LIKE ? THEN -10.0 ELSE 0.0 END`
-		pathBoostTerm = fmt.Sprintf("%%%s%%", likeEscape(query))
+	whereClause := "WHERE chunks_fts MATCH ?"
+	args := []any{matchQuery}
+	if filters.RepoName != "" {
+		whereClause += " AND r.name = ?"
+		args = append(args, filters.RepoName)
+	}
+	if filters.Language != "" {
+		whereClause += " AND LOWER(d.language) = LOWER(?)"
+		args = append(args, filters.Language)
+	}
+	if filters.PathPrefix != "" {
+		whereClause += " AND d.path LIKE ? ESCAPE '\\'"
+		args = append(args, likeEscape(filters.PathPrefix)+"%")
 	}
 
+	orderClause := "rank"
+	if s.cfg.PathBoosting {
+		orderClause = `rank + CASE WHEN d.path LIKE ? THEN -10.0 ELSE 0.0 END`
+		args = append(args, fmt.Sprintf("%%%s%%", likeEscape(query)))
+	}
+
+	args = append(args, limit)
 	sqlQuery := fmt.Sprintf(`
 		SELECT c.id, c.chunk_index, c.content,
 			   d.id, d.path, d.language,
@@ -63,20 +93,13 @@ func (s *Searcher) Search(ctx context.Context, query string, limit int) ([]Resul
 		JOIN chunks c ON c.id = f.rowid
 		JOIN documents d ON d.id = c.doc_id
 		JOIN repositories r ON r.id = d.repo_id
-		WHERE chunks_fts MATCH ?
+		%s
 		ORDER BY %s
-		LIMIT ?`, orderClause)
+		LIMIT ?`, whereClause, orderClause)
 
-	s.logger.Debug("search", "match_query", matchQuery, "limit", limit)
+	s.logger.Debug("search", "match_query", matchQuery, "limit", limit, "filters", filters)
 
-	var rows *sql.Rows
-	var err error
-
-	if s.cfg.PathBoosting {
-		rows, err = s.db.QueryContext(ctx, sqlQuery, matchQuery, pathBoostTerm, limit)
-	} else {
-		rows, err = s.db.QueryContext(ctx, sqlQuery, matchQuery, limit)
-	}
+	rows, err := s.db.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("search query: %w", err)
 	}

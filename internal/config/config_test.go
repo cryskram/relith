@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadDefaults(t *testing.T) {
@@ -42,6 +43,39 @@ func TestLoadEnvOverride(t *testing.T) {
 	}
 	if cfg.Daemon.TCPPort != 9999 {
 		t.Errorf("expected TCPPort 9999, got %d", cfg.Daemon.TCPPort)
+	}
+}
+
+func TestWatcherDefaults(t *testing.T) {
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.Watcher.Enabled {
+		t.Error("expected watcher to be enabled by default")
+	}
+	if cfg.Watcher.Debounce != time.Second {
+		t.Errorf("expected watcher debounce 1s, got %v", cfg.Watcher.Debounce)
+	}
+}
+
+func TestWatcherEnvOverride(t *testing.T) {
+	os.Setenv("RELITH_WATCHER_ENABLED", "false")
+	os.Setenv("RELITH_WATCHER_DEBOUNCE", "500ms")
+	t.Cleanup(func() {
+		os.Unsetenv("RELITH_WATCHER_ENABLED")
+		os.Unsetenv("RELITH_WATCHER_DEBOUNCE")
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Watcher.Enabled {
+		t.Error("expected watcher disabled via RELITH_WATCHER_ENABLED")
+	}
+	if cfg.Watcher.Debounce != 500*time.Millisecond {
+		t.Errorf("expected watcher debounce 500ms, got %v", cfg.Watcher.Debounce)
 	}
 }
 

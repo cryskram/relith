@@ -142,6 +142,49 @@ func TestSearch(t *testing.T) {
 	}
 }
 
+func TestSearchScopedByRepoLanguagePath(t *testing.T) {
+	ts, fdb := newTestServer(t)
+
+	repoA := fdb.CreateRepo("/tmp/repo-a", "repo-a")
+	docAGold := fdb.CreateDocument(repoA.ID, "pkg/gold.go", "Go")
+	fdb.CreateChunk(docAGold.ID, 0, "package pkg\nfunc Gold() {}")
+	docATest := fdb.CreateDocument(repoA.ID, "pkg_test/gold.go", "Go")
+	fdb.CreateChunk(docATest.ID, 0, "package pkg_test\nfunc Gold() {}")
+	repoB := fdb.CreateRepo("/tmp/repo-b", "repo-b")
+	docB := fdb.CreateDocument(repoB.ID, "pkg/gold.py", "Python")
+	fdb.CreateChunk(docB.ID, 0, "def gold():\n    pass\n")
+
+	// repo filter restricts to repo-a.
+	status, body := get(t, ts, "/v1/search?q=gold&repo=repo-a")
+	if status != http.StatusOK {
+		t.Fatalf("search status = %d, want %d (body: %s)", status, http.StatusOK, body)
+	}
+	if !strings.Contains(body, "pkg/gold.go") || strings.Contains(body, "pkg/gold.py") {
+		t.Errorf("repo=repo-a should return only repo-a files, got %s", body)
+	}
+
+	// language filter restricts to a language.
+	status, body = get(t, ts, "/v1/search?q=gold&language=Python")
+	if status != http.StatusOK {
+		t.Fatalf("search status = %d, want %d (body: %s)", status, http.StatusOK, body)
+	}
+	if !strings.Contains(body, "gold.py") || strings.Contains(body, "gold.go") {
+		t.Errorf("language=Python should return only gold.py, got %s", body)
+	}
+
+	// path prefix filter restricts to a directory prefix.
+	status, body = get(t, ts, "/v1/search?q=gold&path=pkg/")
+	if status != http.StatusOK {
+		t.Fatalf("search status = %d, want %d (body: %s)", status, http.StatusOK, body)
+	}
+	if !strings.Contains(body, "pkg/gold.go") || !strings.Contains(body, "pkg/gold.py") {
+		t.Errorf("path=pkg/ should return files under pkg/, got %s", body)
+	}
+	if strings.Contains(body, "pkg_test/gold.go") {
+		t.Errorf("path=pkg/ must not match pkg_test/gold.go, got %s", body)
+	}
+}
+
 func TestSearchMissingQuery(t *testing.T) {
 	ts, _ := newTestServer(t)
 

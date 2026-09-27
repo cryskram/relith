@@ -11,6 +11,7 @@ import (
 	"github.com/cryskram/relith/internal/db"
 	"github.com/cryskram/relith/internal/indexer"
 	"github.com/cryskram/relith/internal/reasoning"
+	"github.com/cryskram/relith/internal/search"
 )
 
 func (s *Server) handleSearchCode(ctx context.Context, params map[string]any) CallToolResult {
@@ -31,47 +32,22 @@ func (s *Server) handleSearchCode(ctx context.Context, params map[string]any) Ca
 	language := strParam(params, "language")
 	maxResults := intParam(params, "max_results", 20)
 
-	results, err := s.searcher.Search(ctx, query, maxResults)
+	// Filters are pushed into SQL so LIMIT applies after filtering.
+	results, err := s.searcher.SearchWithFilters(ctx, query, maxResults, search.Filters{
+		RepoName: repoName,
+		Language: language,
+	})
 	if err != nil {
 		return s.errorContent(fmt.Sprintf("search failed: %v", err))
 	}
 
-	var filtered []struct {
-		DocID    int64   `json:"doc_id"`
-		Path     string  `json:"path"`
-		Language string  `json:"language"`
-		RepoName string  `json:"repo_name"`
-		Content  string  `json:"content"`
-		Score    float64 `json:"score"`
-	}
-
-	for _, r := range results {
-		if repoName != "" && r.RepoName != repoName {
-			continue
-		}
-		if language != "" && !strings.EqualFold(r.Language, language) {
-			continue
-		}
-		filtered = append(filtered, struct {
-			DocID    int64   `json:"doc_id"`
-			Path     string  `json:"path"`
-			Language string  `json:"language"`
-			RepoName string  `json:"repo_name"`
-			Content  string  `json:"content"`
-			Score    float64 `json:"score"`
-		}{
-			DocID: r.DocumentID, Path: r.Path, Language: r.Language,
-			RepoName: r.RepoName, Content: r.Content, Score: r.Score,
-		})
-	}
-
-	if len(filtered) == 0 {
+	if len(results) == 0 {
 		return s.textContent("No results found.")
 	}
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "Found %d result(s):\n\n", len(filtered))
-	for i, r := range filtered {
+	fmt.Fprintf(&sb, "Found %d result(s):\n\n", len(results))
+	for i, r := range results {
 		fmt.Fprintf(&sb, "--- Result %d ---\n", i+1)
 		fmt.Fprintf(&sb, "Repo: %s\n", r.RepoName)
 		fmt.Fprintf(&sb, "File: %s\n", r.Path)

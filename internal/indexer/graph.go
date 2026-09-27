@@ -86,7 +86,7 @@ func (idx *Indexer) extractImportsForDoc(doc db.Document, repoPath string, docBy
 	}
 
 	switch lang {
-	case "Go", "JavaScript", "TypeScript", "Python", "Rust":
+	case "Go", "JavaScript", "TypeScript", "Python", "Rust", "Java", "Kotlin", "C#", "PHP":
 	default:
 		return nil, nil
 	}
@@ -116,11 +116,21 @@ func (idx *Indexer) extractImportsForDoc(doc db.Document, repoPath string, docBy
 		importPaths = scanPyImports(content)
 	case "Rust":
 		importPaths = scanRustImports(content)
+	case "Java", "Kotlin":
+		importPaths = scanJavaLikeImports(content, lang)
+	case "C#":
+		importPaths = scanCSharpImports(content)
+	case "PHP":
+		importPaths = scanPHPImports(content)
 	}
+
+	// For package/namespace languages, derive the source root from the file's
+	// own package/namespace declaration so imports resolve within the repo.
+	srcRoot := sourceRootFromPackage(doc.Path, ownPackageDecl(content, lang), lang)
 
 	var edges []GraphEdge
 	for _, p := range importPaths {
-		resolved := resolveImportPath(p, doc.Path, lang, repoPath, docByPath)
+		resolved := resolveImportPath(p, doc.Path, lang, repoPath, srcRoot, docByPath)
 		if resolved == "" {
 			continue
 		}
@@ -139,8 +149,54 @@ func (idx *Indexer) extractImportsForDoc(doc db.Document, repoPath string, docBy
 	return edges, nil
 }
 
-func resolveImportPath(importPath, relPath, lang, repoPath string, docByPath map[string]db.Document) string {
+func resolveImportPath(importPath, relPath, lang, repoPath, srcRoot string, docByPath map[string]db.Document) string {
 	switch lang {
+	case "Java", "Kotlin":
+		ext := ".java"
+		if lang == "Kotlin" {
+			ext = ".kt"
+		}
+		pkgPath := strings.ReplaceAll(importPath, ".", "/")
+		candidates := make([]string, 0, 2)
+		if srcRoot != "" {
+			candidates = append(candidates, filepath.Join(srcRoot, pkgPath+ext))
+		}
+		candidates = append(candidates, pkgPath+ext)
+		for _, c := range candidates {
+			if _, ok := docByPath[c]; ok {
+				return c
+			}
+		}
+	case "C#":
+		nsPath := strings.ReplaceAll(importPath, ".", "/")
+		candidates := make([]string, 0, 2)
+		if srcRoot != "" {
+			candidates = append(candidates, filepath.Join(srcRoot, nsPath+".cs"))
+		}
+		candidates = append(candidates, nsPath+".cs")
+		for _, c := range candidates {
+			if _, ok := docByPath[c]; ok {
+				return c
+			}
+		}
+	case "PHP":
+		imp := strings.ReplaceAll(importPath, "\\", "/")
+		candidates := make([]string, 0, 4)
+		if srcRoot != "" {
+			candidates = append(candidates, filepath.Join(srcRoot, imp+".php"))
+		}
+		candidates = append(candidates, imp+".php")
+		// Legacy PHP layouts often lowercase directory names while keeping class case.
+		lowerRel := filepath.ToSlash(filepath.Join(strings.ToLower(filepath.Dir(imp)), filepath.Base(imp)))
+		if srcRoot != "" {
+			candidates = append(candidates, filepath.Join(srcRoot, lowerRel+".php"))
+		}
+		candidates = append(candidates, lowerRel+".php")
+		for _, c := range candidates {
+			if _, ok := docByPath[c]; ok {
+				return c
+			}
+		}
 	case "JavaScript", "TypeScript":
 		if strings.HasPrefix(importPath, ".") {
 			dir := filepath.Dir(relPath)
@@ -286,6 +342,99 @@ func scanRustImports(content string) []string {
 	return paths
 }
 
+func scanJavaLikeImports(content, lang string) []string {
+	var re *regexp.Regexp
+	if lang == "Java" {
+		re = regexp.MustCompile(`(?m)^\s*import\s+(?:static\s+)?([\w.]+)\s*;`)
+	} else {
+		re = regexp.MustCompile(`(?m)^\s*import\s+([\w.]+)`)
+	}
+	var paths []string
+	seen := map[string]bool{}
+	for _, m := range re.FindAllStringSubmatch(content, -1) {
+		p := m[1]
+		// Skip wildcard imports (a.b.c.*) — they reference whole packages, not a single file.
+		if strings.HasSuffix(p, ".*") || seen[p] {
+			continue
+		}
+		seen[p] = true
+		paths = append(paths, p)
+	}
+	return paths
+}
+
+func scanCSharpImports(content string) []string {
+	re := regexp.MustCompile(`(?m)^\s*using\s+([\w.]+)\s*;`)
+	var paths []string
+	seen := map[string]bool{}
+	for _, m := range re.FindAllStringSubmatch(content, -1) {
+		p := m[1]
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		paths = append(paths, p)
+	}
+	return paths
+}
+
+func scanPHPImports(content string) []string {
+	re := regexp.MustCompile(`(?m)^\s*use\s+(?:function\s+|const\s+)?([\w\\]+)(?:\s+as\s+\w+)?\s*;`)
+	var paths []string
+	seen := map[string]bool{}
+	for _, m := range re.FindAllStringSubmatch(content, -1) {
+		p := m[1]
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		paths = append(paths, p)
+	}
+	return paths
+}
+
+// ownPackageDecl returns the package/namespace declared by the file itself for
+// languages where imports are package-relative, or "" when not applicable.
+func ownPackageDecl(content, lang string) string {
+	var re *regexp.Regexp
+	switch lang {
+	case "Java", "Kotlin":
+		re = regexp.MustCompile(`(?m)^\s*package\s+([\w.]+)`)
+	case "C#":
+		re = regexp.MustCompile(`(?m)^\s*namespace\s+([\w.]+)`)
+	case "PHP":
+		re = regexp.MustCompile(`(?m)^\s*namespace\s+([\w\\]+)\s*;`)
+	default:
+		return ""
+	}
+	if m := re.FindStringSubmatch(content); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// sourceRootFromPackage reconstructs the source root directory of a file from its
+// package/namespace declaration. E.g. src/main/java/com/example/Main.java with
+// "package com.example;" yields src/main/java. Returns "" when it cannot be derived.
+func sourceRootFromPackage(relPath, pkg, lang string) string {
+	if pkg == "" || relPath == "." {
+		return ""
+	}
+	sep := "."
+	if lang == "PHP" {
+		sep = "\\"
+	}
+	dir := filepath.Dir(relPath)
+	parts := strings.Split(pkg, sep)
+	for i := len(parts) - 1; i >= 0; i-- {
+		if filepath.Base(dir) != parts[i] {
+			return ""
+		}
+		dir = filepath.Dir(dir)
+	}
+	return dir
+}
+
 type GraphEdge struct {
 	SourceDocID int64
 	TargetDocID int64
@@ -335,6 +484,7 @@ func (idx *Indexer) updateGraphForFile(ctx context.Context, repoID int64, repoPa
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	qtx := idx.queries().WithTx(tx)
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM graph_edges WHERE source_doc_id = ? OR target_doc_id = ?`, docID, docID); err != nil {
 		return err
@@ -343,7 +493,7 @@ func (idx *Indexer) updateGraphForFile(ctx context.Context, repoID int64, repoPa
 		return err
 	}
 
-	refEdges, err := idx.queries().GetGraphEdges(ctx, db.GetGraphEdgesParams{RepoID: repoID, RepoID_2: repoID, RepoID_3: repoID})
+	refEdges, err := qtx.GetGraphEdges(ctx, db.GetGraphEdgesParams{RepoID: repoID, RepoID_2: repoID, RepoID_3: repoID})
 	if err != nil {
 		return err
 	}
@@ -376,9 +526,12 @@ type batchExecer interface {
 	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
 }
 
+// importCapableLang reports whether the graph builder extracts explicit import
+// edges for this language. All other languages still get reference
+// co-occurrence edges (refs JOIN symbols).
 func importCapableLang(lang string) bool {
 	switch lang {
-	case "Go", "JavaScript", "TypeScript", "Python", "Rust":
+	case "Go", "JavaScript", "TypeScript", "Python", "Rust", "Java", "Kotlin", "C#", "PHP":
 		return true
 	}
 	return false

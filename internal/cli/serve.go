@@ -23,7 +23,10 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the daemon (REST API + dashboard + file watcher)",
 	Long: `Starts the Relith daemon which serves the REST API, dashboard web UI,
-and file watcher for automatic re-indexing.
+and (when enabled) a file watcher for automatic re-indexing.
+
+File watching is enabled by default; disable it with watcher.enabled=false
+in config or RELITH_WATCHER_ENABLED=false.
 
 Listens on TCP (127.0.0.1:9876 by default). Set daemon.socket
 in config or RELITH_DAEMON_SOCKET to use a Unix socket instead.

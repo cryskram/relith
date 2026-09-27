@@ -239,7 +239,7 @@ CLI ── open DB ──▶ INSERT INTO repositories
                         - extract refs (function calls via byte-level scanner)
                         - batch INSERT refs
                ──▶ BuildGraphForRepo:
-                        - extract import edges (Go/JS/TS/Python/Rust)
+                        - extract import edges (Go/JS/TS/Python/Rust/Java/Kotlin/C#/PHP)
                         - compute ref edges via refs JOIN symbols
                           (filtered by symbol_freq CTE to avoid explosion)
                         - batch INSERT into graph_edges table
@@ -265,6 +265,10 @@ AI Tool ── MCP "search_code" ──▶ MCP Server
 ```
 
 ### C. File Change Detection (Watcher)
+
+Started by `internal/daemon` for every repo returned by `ListRepos` when
+`watcher.enabled` is true (default; disable via `RELITH_WATCHER_ENABLED=false`).
+One watcher per repo, its debounce window comes from `watcher.debounce`.
 
 ```
 Filesystem change (editor saves)
@@ -428,7 +432,7 @@ CREATE INDEX idx_graph_edges_repo_id ON graph_edges(repo_id);
 - **Content-sync FTS5**: The `content=chunks` declaration tells FTS5 to sync automatically via triggers on the `chunks` table. No manual FTS insert/update/delete needed.
 - **`documents` table (not `files`)**: Named `documents` to avoid confusion with filesystem files and to leave room for non-file documents in the future (e.g., documentation pages).
 - **`symbols` + `refs` separate**: Symbol extraction captures definitions; ref extraction captures references. The graph engine joins them on `name` to find co-occurrence. The `symbol_freq` CTE filters names appearing in more than 20 docs to avoid combinatorial explosion (critical for large C/C++ repos).
-- **`graph_edges` pre-computed**: The dependency graph is computed during `BuildGraphForRepo` and stored in `graph_edges`. The API reads from this table rather than re-running the expensive `refs JOIN symbols` query. Two edge kinds: `import` (explicit imports in Go/JS/TS/Python/Rust) and `references` (co-occurrence via refs/symbols join).
+- **`graph_edges` pre-computed**: The dependency graph is computed during `BuildGraphForRepo` and stored in `graph_edges`. The API reads from this table rather than re-running the expensive `refs JOIN symbols` query. Two edge kinds: `import` (explicit imports in Go/JS/TS/Python/Rust/Java/Kotlin/C#/PHP) and `references` (co-occurrence via refs/symbols join).
 - **FTS content deletion**: FTS5 content-sync triggers only fire on INSERT/UPDATE/DELETE of the `chunks` table. When rows are deleted by FK CASCADE from `documents`, the FTS triggers do NOT fire. Cleanup logic (`DeleteDocuments`, `DeleteRepoWithData`) explicitly walks tables in dependency order (graph_edges → chunks → symbols → refs → documents → repositories) to ensure FTS stays consistent.
 
 ## 7. API Design
@@ -455,7 +459,10 @@ DELETE /v1/repos/{id}                  → 204 No Content
 POST   /v1/repos/{id}/index            → {"files_indexed": N, "files_skipped": N, "elapsed": "..."}
 
 # Search
-GET    /v1/search?q=<query>            → [{doc_id, path, language, repo_name, content, score}]
+GET    /v1/search?q=<query>&repo=<name>&language=<lang>&path=<prefix>&limit=<n>
+       → [{doc_id, path, language, repo_name, content, score}]
+       Filters (all optional): repo + language + path are pushed into SQL, so
+       limit applies after filtering.
 
 # Content
 GET    /v1/content?repo=&path=         → File content (raw)
@@ -490,6 +497,7 @@ curl -s -X POST http://127.0.0.1:9876/v1/repos/1/index
 
 # Search
 curl -s "http://127.0.0.1:9876/v1/search?q=sqlite"
+curl -s "http://127.0.0.1:9876/v1/search?q=sqlite&repo=my-repo&language=Go&path=internal/"
 
 # Graph as JSON
 curl -s "http://127.0.0.1:9876/v1/graph?repo=my-repo"
@@ -508,12 +516,12 @@ The MCP server (`relithmcp`) implements the [Model Context Protocol](https://mod
 | `list_repositories`   | List all tracked repos with status and file count | -                                                                                           |
 | `get_repo_summary`    | Language breakdown, file/chunk count, last indexed| `repo_name` (required)                                                                        |
 | `find_symbol`         | Search symbols by name prefix                    | `name` (required), `kind` (optional), `repo_name` (optional)                                  |
-| `find_references`     | Find all call sites for a symbol name            | `name` (required), `repo_name` (optional)                                                     |
+| `find_references`     | Call-site candidates for a symbol name (heuristic, name co-occurrence, not type-resolved) | `name` (required), `repo_name` (optional)                                                     |
 | `trace_context`       | Combine search + symbols + graph into one bundle | `query` (required), `repo_name` (optional), `max_results` (default 8)                         |
 | `get_file_outline`    | Symbols and refs in a file (metadata + chunks)   | `repo_name` (required), `path` (required)                                                      |
 | `get_symbol_definition`| Find exact definition of a symbol               | `name` (required), `repo_name` (optional), `kind` (optional), `max_results` (default 10)       |
 | `find_callees`        | Functions called inside a symbol's definition    | `name` (required), `repo_name` (optional), `max_results` (default 15)                          |
-| `find_callers`        | Call sites for a symbol (across repos)           | `name` (required), `repo_name` (optional), `max_results` (default 20)                          |
+| `find_callers`        | Call-site candidates for a symbol across repos (heuristic, name co-occurrence, not type-resolved) | `name` (required), `repo_name` (optional), `max_results` (default 20)                          |
 | `get_related_files`   | Graph neighbors for a file                       | `repo_name` (required), `path` (required), `max_results` (default 12)                          |
 | `list_hub_files`      | Most connected files (degree centrality)         | `repo_name` (optional), `max_results` (default 15)                                             |
 | `query_graph`         | Query graph: neighbors, hotspots, or path        | `mode` (required), `repo_name` (required), `path`, `target_path`, `max_results`                |
@@ -580,10 +588,10 @@ relith://repos/{id}              → Repository metadata
 ### Graph Build (runs after index)
 
 1. Clear existing `graph_edges` for repo
-2. Extract import edges per doc: Go (`import "..."`), JS/TS (`from "..."`), Python (`import ...`), Rust (`use ...`)
+2. Extract import edges per doc: Go (`import "..."`), JS/TS (`from "..."`), Python (`import ...`), Rust (`use ...`), Java/Kotlin (`import ...`), C# (`using ...`), PHP (`use ...`)
 3. Compute ref edges: `SELECT FROM refs JOIN symbols ON name` (filtered by `symbol_freq` CTE to exclude names in >20 docs - avoids combinatorial explosion)
 4. Batch INSERT all edges into `graph_edges` table (kinds: `import`, `references`)
-5. Non-import-capable languages (C/C++/Java/PHP/Ruby/etc.) skip the per-doc import loop - only ref edges are computed
+5. Non-import-capable languages (C/C++/Ruby/Shell/JSON/etc.) skip the per-doc import loop - only reference co-occurrence edges are computed
 
 ### Incremental Index (File Change via Watcher)
 
@@ -774,7 +782,7 @@ Commands with styled output (but not interactive TUI): `status`, `repo list`.
 ### Graph Build Optimization
 
 - `symbol_freq` CTE: filters symbol names appearing in >20 docs to avoid combinatorial explosion in `refs JOIN symbols`
-- Import-capable language check: only Go/JS/TS/Python/Rust files get per-doc import loop (C/C++/Java/etc. skipped - ref edges only)
+- Import-capable language check: only Go/JS/TS/Python/Rust/Java/Kotlin/C#/PHP files get the per-doc import loop (C/C++/Ruby/etc. skipped - ref co-occurrence edges only)
 - Edges pre-computed into `graph_edges` table; API reads from table instead of re-running the JOIN
 - Compound indexes `refs(name, doc_id)` and `symbols(name, doc_id)` for covering index scans on the graph query
 - Pre-filter refs and symbols to `symbol_freq` names via `WHERE name IN` before the cross-join (reduces intermediate rows from full cross-product to only names passing frequency filter)
@@ -853,7 +861,7 @@ Remaining optimization opportunities (in priority order):
 ### v0.4 - Performance & Scale (Complete)
 
 - Graph build optimization: `symbol_freq` CTE + `WHERE name IN` pre-filter + compound indexes (21× graph build speedup)
-- Import-capable language filter: only Go/JS/TS/Python/Rust files get per-doc import loop
+- Import-capable language filter: only Go/JS/TS/Python/Rust/Java/Kotlin/C#/PHP files get the per-doc import loop
 - SQLite PRAGMA tuning + batch multi-row INSERTs
 - FTS cleanup: explicit multi-table deletion (`DeleteDocuments`, `DeleteRepoWithData`)
 - Linux kernel 94K files: **15min 48s total** (index 14min 40s + graph build 1min 8s)

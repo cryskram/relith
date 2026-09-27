@@ -71,13 +71,13 @@ func (q *Queries) GetRepo(ctx context.Context, id int64) (Repository, error) {
 	return i, err
 }
 
-const getRepoByPath = `-- name: GetRepoByPath :one
+const getRepoByName = `-- name: GetRepoByName :one
 SELECT id, path, name, remote_url, status, last_indexed_at, file_count, created_at, updated_at FROM repositories
-WHERE path = ?
+WHERE name = ?
 `
 
-func (q *Queries) GetRepoByPath(ctx context.Context, path string) (Repository, error) {
-	row := q.db.QueryRowContext(ctx, getRepoByPath, path)
+func (q *Queries) GetRepoByName(ctx context.Context, name string) (Repository, error) {
+	row := q.db.QueryRowContext(ctx, getRepoByName, name)
 	var i Repository
 	err := row.Scan(
 		&i.ID,
@@ -93,13 +93,13 @@ func (q *Queries) GetRepoByPath(ctx context.Context, path string) (Repository, e
 	return i, err
 }
 
-const getRepoByName = `-- name: GetRepoByName :one
+const getRepoByPath = `-- name: GetRepoByPath :one
 SELECT id, path, name, remote_url, status, last_indexed_at, file_count, created_at, updated_at FROM repositories
-WHERE name = ?
+WHERE path = ?
 `
 
-func (q *Queries) GetRepoByName(ctx context.Context, name string) (Repository, error) {
-	row := q.db.QueryRowContext(ctx, getRepoByName, name)
+func (q *Queries) GetRepoByPath(ctx context.Context, path string) (Repository, error) {
+	row := q.db.QueryRowContext(ctx, getRepoByPath, path)
 	var i Repository
 	err := row.Scan(
 		&i.ID,
@@ -187,6 +187,24 @@ func (q *Queries) ListRepos(ctx context.Context) ([]Repository, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateRepoFileCount = `-- name: UpdateRepoFileCount :exec
+UPDATE repositories
+SET file_count = MAX(file_count + ?1, 0),
+    last_indexed_at = CURRENT_TIMESTAMP,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ?2
+`
+
+type UpdateRepoFileCountParams struct {
+	Delta int64 `json:"delta"`
+	ID    int64 `json:"id"`
+}
+
+func (q *Queries) UpdateRepoFileCount(ctx context.Context, arg UpdateRepoFileCountParams) error {
+	_, err := q.db.ExecContext(ctx, updateRepoFileCount, arg.Delta, arg.ID)
+	return err
 }
 
 const updateRepoStatus = `-- name: UpdateRepoStatus :exec

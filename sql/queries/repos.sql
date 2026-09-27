@@ -27,6 +27,13 @@ SET status = ?,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = ?;
 
+-- name: UpdateRepoFileCount :exec
+UPDATE repositories
+SET file_count = MAX(file_count + sqlc.arg(delta), 0),
+    last_indexed_at = CURRENT_TIMESTAMP,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = sqlc.arg(id);
+
 -- name: DeleteRepo :exec
 DELETE FROM repositories
 WHERE id = ?;

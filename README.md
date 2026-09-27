@@ -45,10 +45,10 @@ Instead of every AI tool building its own isolated context, Relith is a **shared
 - **MCP-native** - 21 tools for AI assistants: search, symbols, references, definitions, callers/callees, file outline, dependency tracing, graph queries, architecture overview, commits, blame, and diffs
 - **Git-aware context** - ask *when / why / who*: recent commits, per-file history (follows renames), per-line blame, and full patches between any two refs
 - **Cross-file reasoning** - one `trace_context` bundle combining FTS search + symbol matches + references + graph neighbors
-- **Knowledge graph** - typed dependency graph (import edges for Go/JS/TS/Python/Rust, reference co-occurrence for all), visualized with an interactive D3.js force-directed graph
+- **Knowledge graph** - typed dependency graph (import edges for Go/JS/TS/Python/Rust/Java/Kotlin/C#/PHP, reference co-occurrence for all others), visualized with an interactive D3.js force-directed graph
 - **Symbol & reference extraction** - functions, types, methods, interfaces, enums, macros across 17 languages
 - **Multi-repo** - index unlimited repos, search across all at once
-- **Self-healing watcher** - auto-reindexes changed files via fsnotify
+- **Self-healing watcher** - auto-reindexes changed files via fsnotify (enabled via watcher.enabled, default on)
 - **Terminal UI** - Bubble Tea progress bars, spinners, and a server dashboard
 - **REST API** - HTTP server for scripts, CI pipelines, and programmatic access
 - **Local-first, zero runtime** - static Go binaries in one download, no npm/pip/uv, no runtime, Docker optional, your code never leaves your machine
@@ -157,6 +157,7 @@ Via the daemon:
 ```bash
 curl -s 127.0.0.1:9876/v1/health
 curl -s "127.0.0.1:9876/v1/search?q=sqlite"
+curl -s "127.0.0.1:9876/v1/search?q=sqlite&repo=my-repo&language=Go&path=internal/"
 curl -s 127.0.0.1:9876/v1/graph          # interactive graph (browser)
 curl -s 127.0.0.1:9876/v1/graph?repo=my-repo  # graph data (JSON)
 ```

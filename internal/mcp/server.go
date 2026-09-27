@@ -35,17 +35,12 @@ type Server struct {
 	initialized bool
 }
 
-func NewServer(database *sql.DB, log *slog.Logger) *Server {
-	cfg := &config.Config{
-		Indexer: config.IndexerConfig{
-			Concurrency: 4,
-			MaxFileSize: 10 * 1024 * 1024,
-		},
-		Search: config.SearchConfig{
-			MaxResults:   100,
-			PathBoosting: true,
-		},
-	}
+func NewServer(database *sql.DB, log *slog.Logger, cfg config.Config) *Server {
+	log.Info("mcp server config",
+		"search_max_results", cfg.Search.MaxResults,
+		"search_path_boosting", cfg.Search.PathBoosting,
+		"indexer_concurrency", cfg.Indexer.Concurrency,
+	)
 
 	s := &Server{
 		logger:    log,
@@ -232,7 +227,7 @@ func (s *Server) handleToolsList(ctx context.Context, req JSONRPCRequest) {
 		},
 		{
 			Name:        "find_references",
-			Description: "Find all references to a function or symbol name across all indexed repositories. Shows every call site with file, line, and surrounding context.",
+			Description: "Find all references to a function or symbol name across all indexed repositories. Shows every call site with file, line, and surrounding context. (heuristic, name co-occurrence)",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
@@ -296,7 +291,7 @@ func (s *Server) handleToolsList(ctx context.Context, req JSONRPCRequest) {
 		},
 		{
 			Name:        "find_callers",
-			Description: "Find exact call sites for a symbol name across repositories or within one repository.",
+			Description: "Find exact call sites for a symbol name across repositories or within one repository. (heuristic, name co-occurrence)",
 			InputSchema: json.RawMessage(`{
 				"type": "object",
 				"properties": {
